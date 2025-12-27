@@ -1,0 +1,148 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // remove output for now (simplifies imports)
+}
+
+datasource db {
+  provider = "postgresql"
+
+
+
+}
+
+
+// prisma/schema.prisma
+
+enum PracticeTopic {
+  dot
+  projection
+  angle
+  vectors
+}
+
+enum PracticeKind {
+  single_choice
+  multi_choice
+  numeric
+  vector_drag_target
+  vector_drag_dot
+}
+
+enum PracticeDifficulty {
+  easy
+  medium
+  hard
+}
+
+enum PracticeSessionStatus {
+  active
+  completed
+}
+
+model PracticeSection {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  order       Int      @default(0)
+
+  // which topics this section can generate
+  topics      PracticeTopic[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions    PracticeSession[]
+}
+
+model PracticeSession {
+  id          String               @id @default(cuid())
+  status      PracticeSessionStatus @default(active)
+
+  // actor
+  userId      String?
+  guestId     String?
+
+  sectionId   String
+  section     PracticeSection      @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  difficulty  PracticeDifficulty
+
+  targetCount Int                  @default(10)
+
+  total       Int                  @default(0)
+  correct     Int                  @default(0)
+
+  startedAt   DateTime             @default(now())
+  completedAt DateTime?
+
+  // denormalized “last” pointers
+  lastInstanceId String?
+
+  instances   PracticeQuestionInstance[]
+  attempts    PracticeAttempt[]
+
+  @@index([userId])
+  @@index([guestId])
+  @@index([sectionId])
+}
+
+model PracticeQuestionInstance {
+  id         String             @id @default(cuid())
+
+  sessionId  String?
+  session    PracticeSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  topic      PracticeTopic
+  kind       PracticeKind
+  difficulty PracticeDifficulty
+
+  title      String
+  prompt     String
+
+  // Public data sent to client (options, initial vectors, etc.)
+  publicPayload Json
+
+  // Secret data used only by server (correct answer, tolerance, etc.)
+  secretPayload Json
+
+  createdAt  DateTime @default(now())
+  answeredAt DateTime?
+
+  attempts   PracticeAttempt[]
+
+  @@index([sessionId])
+  @@index([topic, difficulty])
+}
+
+model PracticeAttempt {
+  id         String   @id @default(cuid())
+
+  sessionId  String?
+  session    PracticeSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  instanceId String
+  instance   PracticeQuestionInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // actor
+  userId     String?
+  guestId    String?
+
+  answerPayload Json
+  ok          Boolean
+
+  revealUsed  Boolean @default(false)
+
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([instanceId])
+  @@index([userId])
+  @@index([guestId])
+}
