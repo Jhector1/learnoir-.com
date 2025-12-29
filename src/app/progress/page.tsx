@@ -403,6 +403,17 @@ export default function ProgressPage() {
   );
 }
 
+
+
+
+
+
+
+
+
+
+
+
 function KPI({ title, value, sub }: { title: string; value: string; sub?: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-[0_18px_60px_rgba(0,0,0,0.30)]">

@@ -1,17 +1,17 @@
-// src/components/HeaderSlick.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
+import UserMenuSlick from "./UserMenuSlick";
 
 type NavItem = { href: string; label: string };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home" },
-  // { href: "/simulator", label: "Simulator" },
   { href: "/practice/sections", label: "Practice" },
-  // { href: "/about", label: "About" },
+  { href: "/assignments", label: "Assignments" },
 ];
 
 function cn(...cls: Array<string | false | undefined | null>) {
@@ -26,6 +26,11 @@ export default function HeaderSlick({
   badge?: string;
 }) {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
+
+  const user = session?.user;
+  const isAuthed = !!user;
+
   const [open, setOpen] = useState(false);
   const [elevated, setElevated] = useState(false);
 
@@ -37,7 +42,6 @@ export default function HeaderSlick({
   }, []);
 
   useEffect(() => {
-    // close on route change
     setOpen(false);
   }, [pathname]);
 
@@ -82,7 +86,6 @@ export default function HeaderSlick({
                 <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(900px_280px_at_50%_0%,rgba(255,255,255,0.10)_0%,transparent_60%)]" />
 
                 <div className="relative flex items-center gap-1">
-                  {/* active pill */}
                   <div
                     className="pointer-events-none absolute top-1 bottom-1 rounded-xl border border-white/10 bg-white/10 transition-all duration-300"
                     style={{
@@ -116,6 +119,27 @@ export default function HeaderSlick({
               >
                 Start session
               </Link>
+
+              {/* User menu / Sign in */}
+              {status !== "loading" && (
+                isAuthed ? (
+                  <UserMenuSlick
+                    name={user?.name ?? "User"}
+                    email={user?.email}
+                    image={user?.image}
+                    profileHref="/profile"
+                    onSignOut={() => signOut({ callbackUrl: "/" })}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => signIn()}
+                    className="rounded-2xl border border-white/10 bg-white/[0.06] px-3 py-2 text-xs font-extrabold text-white/85 hover:bg-white/[0.10]"
+                  >
+                    Sign in
+                  </button>
+                )
+              )}
             </nav>
 
             {/* Mobile button */}
@@ -133,7 +157,7 @@ export default function HeaderSlick({
           <div
             className={cn(
               "md:hidden overflow-hidden transition-[max-height,opacity] duration-300",
-              open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+              open ? "max-h-[520px] opacity-100" : "max-h-0 opacity-0"
             )}
           >
             <div className="pb-4">
@@ -162,6 +186,35 @@ export default function HeaderSlick({
                 >
                   Start session
                 </Link>
+
+                {/* Mobile user actions */}
+                {status !== "loading" && (
+                  isAuthed ? (
+                    <>
+                      <Link
+                        href="/profile"
+                        className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm font-extrabold text-white/85 hover:bg-white/[0.08]"
+                      >
+                        Profile
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => signOut({ callbackUrl: "/" })}
+                        className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm font-extrabold text-white/85 hover:bg-white/[0.08]"
+                      >
+                        Log out
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => signIn()}
+                      className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm font-extrabold text-white/85 hover:bg-white/[0.08]"
+                    >
+                      Sign in
+                    </button>
+                  )
+                )}
               </div>
 
               <div className="mt-3 text-[11px] text-white/55">
@@ -172,7 +225,6 @@ export default function HeaderSlick({
         </div>
       </div>
 
-      {/* Subtle glow line */}
       <div className="h-px w-full bg-[linear-gradient(90deg,transparent,rgba(122,162,255,0.45),rgba(255,107,214,0.35),transparent)]" />
     </header>
   );

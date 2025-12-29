@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const from = daysAgo(days);
 
   const actor = await getActor();
+  console.log("Progress for actor:", actor);
 
   const whereActor = {
     OR: [

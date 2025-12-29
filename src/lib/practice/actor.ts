@@ -1,11 +1,10 @@
 // src/lib/practice/actor.ts
 import { cookies, headers } from "next/headers";
-import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth"; // <- your server auth helper
 
 export type Actor = { userId?: string; guestId?: string };
 
 export async function getActor(): Promise<Actor> {
-  // Optional: allow header override during dev/tests
   const h = await headers();
   const devUserId = h.get("x-user-id") || undefined;
   const devGuestId = h.get("x-guest-id") || undefined;
@@ -13,11 +12,17 @@ export async function getActor(): Promise<Actor> {
   const c = await cookies();
   const cookieGuestId = c.get("guestId")?.value;
 
-  // If you later add NextAuth:
-  // - fill userId when logged-in
-  // - otherwise guestId
-
+  // ✅ dev override first
   if (devUserId) return { userId: devUserId };
+
+  // ✅ real session check
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  // ✅ if logged in, prefer userId (optionally include guestId for claiming)
+  if (userId) return { userId, guestId: cookieGuestId };
+
+  // ✅ otherwise guest
   return { guestId: devGuestId ?? cookieGuestId ?? "anon" };
 }
 export function ensureGuestId(actor: Actor) {

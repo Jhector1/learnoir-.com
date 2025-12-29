@@ -61,50 +61,83 @@ type QItem = {
   key: string;
   exercise: Exercise;
 
-  // user work-in-progress
   single: string;
   multi: string[];
   num: string;
   dragA: Vec3;
   dragB: Vec3;
 
-  // validation state
   result: ValidateResponse | null;
   submitted: boolean;
+  revealed?: boolean;
 };
+
+function cloneVec(v: any): Vec3 {
+  return { x: Number(v?.x ?? 0), y: Number(v?.y ?? 0), z: Number(v?.z ?? 0) };
+}
+
+function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
+  const ex = item.exercise;
+
+  if (ex.kind === "single_choice") {
+    if (!item.single) return undefined;
+    return { kind: "single_choice", optionId: item.single };
+  }
+
+  if (ex.kind === "multi_choice") {
+    if (!item.multi?.length) return undefined;
+    return { kind: "multi_choice", optionIds: item.multi };
+  }
+
+  if (ex.kind === "numeric") {
+    if (!item.num?.trim()) return undefined;
+    const v = Number(item.num);
+    if (!Number.isFinite(v)) return undefined;
+    return { kind: "numeric", value: v };
+  }
+
+  if (ex.kind === "vector_drag_target") {
+    return {
+      kind: "vector_drag_target",
+      a: { ...item.dragA },
+      b: { ...item.dragB },
+    };
+  }
+
+  if (ex.kind === "vector_drag_dot") {
+    return { kind: "vector_drag_dot", a: { ...item.dragA } };
+  }
+
+  return undefined;
+}
 
 export default function PracticePage() {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
 
-  // filters
   const [topic, setTopic] = useState<Topic | "all">("all");
   const [difficulty, setDifficulty] = useState<Difficulty | "all">("all");
   const [section, setSection] = useState<string | null>(null);
 
-  // session id from API
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // phase + UI
   const [phase, setPhase] = useState<Phase>("practice");
   const [showMissed, setShowMissed] = useState(true);
 
-  // loading + error
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ question stack + navigation index
   const [stack, setStack] = useState<QItem[]>([]);
   const [idx, setIdx] = useState(0);
 
-  // hydration + guards
   const [hydrated, setHydrated] = useState(false);
   const restoredRef = useRef(false);
   const firstFiltersEffectRef = useRef(true);
   const skipUrlSyncRef = useRef(true);
 
-  // ---- confirm modal ----
+  const abortRef = useRef<AbortController | null>(null);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingChange>(null);
 
@@ -156,7 +189,7 @@ export default function PracticePage() {
 
   function requestChange(next: PendingChange) {
     if (!next) return;
-
+    if (isAssignmentRun) return;
     if (!hasProgress) {
       if (next.kind === "topic") setTopic(next.value);
       if (next.kind === "difficulty") setDifficulty(next.value);
@@ -166,6 +199,79 @@ export default function PracticePage() {
     setPendingChange(next);
     setConfirmOpen(true);
   }
+  type GridMode = "auto" | "fixed";
+
+  const BASE_PX_PER_SQUARE = 44;
+  // What users can pick manually (feel free to tweak)
+  const GRID_STEPS: number[] = [0.25, 0.5, 1, 2, 5, 10, 20];
+  const isAssignmentRun =
+    sp.get("type") === "assignment" || !!sp.get("assignmentId");
+
+  const [gridMode, setGridMode] = useState<GridMode>("auto");
+  // what we show in UI (and bind to the dropdown)
+  const [gridLabelStep, setGridLabelStep] = useState<number>(1);
+
+  function setGrid(step: number) {
+    const s = Number(step);
+    if (!Number.isFinite(s) || s <= 0) return;
+
+    // Keep "one square" visually consistent in pixels:
+    // gridline spacing = scale * gridStep = BASE_PX_PER_SQUARE
+    padRef.current.gridStep = s;
+    padRef.current.scale = BASE_PX_PER_SQUARE / s;
+
+    setGridLabelStep(s);
+  }
+
+  function chooseGridStep(maxAbs: number) {
+    if (maxAbs >= 100) return 20;
+    if (maxAbs >= 50) return 10;
+    if (maxAbs >= 20) return 5;
+    if (maxAbs >= 10) return 2;
+    if (maxAbs >= 4) return 1;
+    if (maxAbs >= 2) return 0.5;
+    return 0.25;
+  }
+
+  function autoGridForExercise(ex: Exercise) {
+    // Only auto-scale for vector pads
+    if (ex.kind !== "vector_drag_target" && ex.kind !== "vector_drag_dot")
+      return;
+
+    const vals: number[] = [];
+
+    const pushVec = (v?: any) => {
+      if (!v) return;
+      vals.push(Math.abs(Number(v.x ?? 0)), Math.abs(Number(v.y ?? 0)));
+    };
+
+    pushVec((ex as any).initialA);
+    pushVec((ex as any).initialB);
+    pushVec((ex as any).targetA);
+    pushVec((ex as any).b);
+
+    // Extra: dot questions might require a large |a| even if initialA is small
+    if (ex.kind === "vector_drag_dot") {
+      const bx = Number((ex as any).b?.x ?? 0);
+      const by = Number((ex as any).b?.y ?? 0);
+      const bmag = Math.sqrt(bx * bx + by * by) || 1;
+
+      const targetDot = Math.abs(Number((ex as any).targetDot ?? 0));
+      const estAlong = targetDot / bmag; // rough magnitude needed along b
+      if (Number.isFinite(estAlong)) vals.push(estAlong);
+    }
+
+    const maxAbs = Math.max(1, ...vals);
+    setGrid(chooseGridStep(maxAbs));
+  }
+
+  // Auto-run when the question changes (NOT while dragging)
+  useEffect(() => {
+    if (!exercise) return;
+    if (gridMode !== "auto") return;
+    autoGridForExercise(exercise);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.key, gridMode]);
 
   function applyPendingChange() {
     if (!pendingChange) return;
@@ -179,6 +285,12 @@ export default function PracticePage() {
     setConfirmOpen(false);
     setPendingChange(null);
   }
+
+  useEffect(() => {
+    if (!exercise) return;
+    autoGridForExercise(exercise);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.key]);
 
   useEffect(() => {
     if (!confirmOpen) return;
@@ -196,7 +308,6 @@ export default function PracticePage() {
     };
   }, [confirmOpen]);
 
-  // ---- persistence (refresh keeps progress) ----
   function storageKey(
     s: string | null,
     t: Topic | "all",
@@ -205,7 +316,6 @@ export default function PracticePage() {
     return `practice:v3:${s ?? "no-section"}:${t}:${d}`;
   }
 
-  // Restore on first mount using URL filters
   useEffect(() => {
     if (hydrated) return;
 
@@ -232,7 +342,6 @@ export default function PracticePage() {
         ? (topicParam as any)
         : "all";
 
-    // try restore
     try {
       const k = storageKey(nextSection, nextTopic, nextDifficulty);
       const raw = sessionStorage.getItem(k);
@@ -262,11 +371,8 @@ export default function PracticePage() {
           return;
         }
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
-    // fallback: hydrate from URL
     setSection(nextSection);
     setTopic(nextTopic);
     setDifficulty(nextDifficulty);
@@ -284,7 +390,6 @@ export default function PracticePage() {
     setHydrated(true);
   }, [sp, hydrated]);
 
-  // Save
   useEffect(() => {
     if (!hydrated) return;
     const payload = {
@@ -304,9 +409,7 @@ export default function PracticePage() {
         storageKey(section, topic, difficulty),
         JSON.stringify(payload)
       );
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [
     hydrated,
     section,
@@ -319,7 +422,6 @@ export default function PracticePage() {
     idx,
   ]);
 
-  // Keep URL params synced when topic/difficulty/section change
   useEffect(() => {
     if (!hydrated) return;
 
@@ -344,7 +446,91 @@ export default function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, section, topic, difficulty, pathname, router]);
 
-  // When filters change: reset + load first question
+  function updateCurrent(patch: Partial<QItem>) {
+    setStack((prev) => {
+      if (idx < 0 || idx >= prev.length) return prev;
+      const next = prev.slice();
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  }
+
+  function initItemFromExercise(ex: Exercise, k: string): QItem {
+    let a: Vec3 = { x: 0, y: 0, z: 0 };
+    let b: Vec3 = { x: 2, y: 1, z: 0 };
+
+    if (ex.kind === "vector_drag_target") {
+      a = cloneVec(ex.initialA);
+      b = cloneVec(ex.initialB ?? { x: 2, y: 1, z: 0 });
+    } else if (ex.kind === "vector_drag_dot") {
+      a = cloneVec(ex.initialA);
+      b = cloneVec(ex.b ?? { x: 2, y: 1, z: 0 }); // ✅ fallback
+    }
+
+    return {
+      key: k,
+      exercise: ex,
+      single: "",
+      multi: [],
+      num: "",
+      dragA: a,
+      dragB: b,
+      result: null,
+      submitted: false,
+      revealed: false,
+    };
+  }
+
+  async function loadNextExercise(opts?: { forceNew?: boolean }) {
+    if (answeredCount >= SESSION_SIZE && !opts?.forceNew) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setBusy(true);
+    setErr(null);
+
+    try {
+      const qs = new URLSearchParams();
+
+      qs.set("topic", topic);
+      if (difficulty !== "all") qs.set("difficulty", difficulty);
+
+      const sid = opts?.forceNew ? null : sessionId;
+
+      if (sid) qs.set("sessionId", sid);
+      else if (section) qs.set("section", section);
+
+      const r = await fetch(`/api/practice?${qs.toString()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+
+      const data = await readJsonSafe(r);
+      if (!r.ok)
+        throw new Error(data?.message || `Request failed (${r.status})`);
+
+      const ex: Exercise = data.exercise;
+      const k: string = data.key;
+
+      if (data.sessionId) setSessionId(data.sessionId);
+
+      const item = initItemFromExercise(ex, k);
+
+      setStack((prev) => {
+        const next = [...prev, item];
+        setIdx(next.length - 1);
+        return next;
+      });
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setErr(e?.message ?? "Failed to load question");
+    } finally {
+      if (abortRef.current === controller) setBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!hydrated) return;
 
@@ -364,7 +550,6 @@ export default function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topic, difficulty, section, hydrated]);
 
-  // Initial load after hydration (if not restored)
   useEffect(() => {
     if (!hydrated) return;
     if (restoredRef.current && stack.length > 0) return;
@@ -372,92 +557,10 @@ export default function PracticePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  // Auto summary
   useEffect(() => {
     if (phase === "practice" && answeredCount >= SESSION_SIZE)
       setPhase("summary");
   }, [answeredCount, phase]);
-
-  function updateCurrent(patch: Partial<QItem>) {
-    setStack((prev) => {
-      if (idx < 0 || idx >= prev.length) return prev;
-      const next = prev.slice();
-      next[idx] = { ...next[idx], ...patch };
-      return next;
-    });
-  }
-
-  function initItemFromExercise(ex: Exercise, k: string): QItem {
-    let a: Vec3 = { x: 0, y: 0, z: 0 };
-    let b: Vec3 = { x: 2, y: 1, z: 0 };
-
-    if (ex.kind === "vector_drag_target") {
-      a = ex.initialA;
-      b = ex.initialB ?? { x: 2, y: 1, z: 0 };
-    } else if (ex.kind === "vector_drag_dot") {
-      a = ex.initialA;
-      b = ex.b;
-    }
-
-    return {
-      key: k,
-      exercise: ex,
-      single: "",
-      multi: [],
-      num: "",
-      dragA: a,
-      dragB: b,
-      result: null,
-      submitted: false,
-    };
-  }
-
-  async function loadNextExercise(opts?: { forceNew?: boolean }) {
-    if (answeredCount >= SESSION_SIZE && !opts?.forceNew) return;
-
-    setBusy(true);
-    setErr(null);
-
-    try {
-      const qs = new URLSearchParams();
-
-      // topic (including "all") is safe
-      qs.set("topic", topic);
-
-      // ✅ IMPORTANT: do NOT send difficulty=all (matches your older working logic)
-      if (difficulty !== "all") qs.set("difficulty", difficulty);
-
-      // session routing
-      if (sessionId) qs.set("sessionId", sessionId);
-      else if (section) qs.set("section", section);
-
-      const r = await fetch(`/api/practice?${qs.toString()}`, {
-        cache: "no-store",
-      });
-      const data = await readJsonSafe(r);
-
-      if (!r.ok)
-        throw new Error(data?.message || `Request failed (${r.status})`);
-
-      const ex: Exercise = data.exercise;
-      const k: string = data.key;
-
-      if (data.sessionId) setSessionId(data.sessionId);
-
-      const item = initItemFromExercise(ex, k);
-
-      // ✅ append and jump to it, without using stale stack.length
-      setStack((prev) => {
-        const next = [...prev, item];
-        setIdx(next.length - 1);
-        return next;
-      });
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load question");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function canGoPrev() {
     return idx > 0;
@@ -483,20 +586,39 @@ export default function PracticePage() {
 
     await loadNextExercise();
   }
-  function cloneVec(v: any): Vec3 {
-    return { x: Number(v.x), y: Number(v.y), z: Number(v.z ?? 0) };
-  }
 
   async function submitAnswer() {
     if (!current || !exercise) return;
 
-    // optionally prevent resubmit
-    // if (current.submitted) return;
+    // ✅ for vector questions: read live a/b directly from VectorPad stateRef
+    let answer: SubmitAnswer | undefined;
 
-    const answer = buildSubmitAnswerFromItem(current);
+    if (exercise.kind === "vector_drag_dot") {
+      answer = { kind: "vector_drag_dot", a: cloneVec(padRef.current.a) };
+    } else if (exercise.kind === "vector_drag_target") {
+      answer = {
+        kind: "vector_drag_target",
+        a: cloneVec(padRef.current.a),
+        b: cloneVec(padRef.current.b),
+      };
+    } else {
+      answer = buildSubmitAnswerFromItem(current);
+    }
+
     if (!answer) {
       setErr("Answer is incomplete or invalid.");
       return;
+    }
+
+    // ✅ keep the UI state in sync with what we actually submit
+    if (exercise.kind === "vector_drag_dot") {
+      updateCurrent({ dragA: cloneVec(padRef.current.a) });
+    }
+    if (exercise.kind === "vector_drag_target") {
+      updateCurrent({
+        dragA: cloneVec(padRef.current.a),
+        dragB: cloneVec(padRef.current.b),
+      });
     }
 
     setBusy(true);
@@ -510,16 +632,12 @@ export default function PracticePage() {
       });
 
       const data = (await readJsonSafe(r)) as ValidateResponse;
-
       if (!r.ok)
         throw new Error(
           (data as any)?.message || `Validate failed (${r.status})`
         );
 
-      updateCurrent({
-        result: data,
-        submitted: true,
-      });
+      updateCurrent({ result: data, submitted: true, revealed: false });
     } catch (e: any) {
       setErr(e?.message ?? "Failed to submit");
     } finally {
@@ -541,13 +659,25 @@ export default function PracticePage() {
       });
 
       const data = (await readJsonSafe(r)) as ValidateResponse;
-
       if (!r.ok)
         throw new Error(
           (data as any)?.message || `Reveal failed (${r.status})`
         );
 
-      updateCurrent({ result: data });
+      const solA = (data as any)?.expected?.solutionA;
+      const bExp = (data as any)?.expected?.b;
+
+      // ✅ apply to React state
+      updateCurrent({
+        result: data,
+        revealed: true,
+        ...(solA ? { dragA: cloneVec(solA) } : {}),
+        ...(bExp ? { dragB: cloneVec(bExp) } : {}), // dot: keeps b in sync w server
+      });
+
+      // ✅ apply to pad immediately
+      if (solA) padRef.current.a = cloneVec(solA) as any;
+      if (bExp) padRef.current.b = cloneVec(bExp) as any;
     } catch (e: any) {
       setErr(e?.message ?? "Failed to reveal");
     } finally {
@@ -555,10 +685,6 @@ export default function PracticePage() {
     }
   }
 
-  // Keyboard shortcuts:
-  // - Enter: submit (even if numeric input is focused; not if select/textarea)
-  // - Left arrow: prev (disabled while typing in input/select/textarea)
-  // - Right arrow: next (disabled while typing in input/select/textarea)
   useEffect(() => {
     const activeTag = () => {
       const el = document.activeElement as HTMLElement | null;
@@ -574,7 +700,6 @@ export default function PracticePage() {
 
     const shouldBlockEnter = () => {
       const tag = activeTag();
-      // don't hijack enter on select/textarea
       return tag === "select" || tag === "textarea";
     };
 
@@ -591,7 +716,6 @@ export default function PracticePage() {
         return;
       }
 
-      // arrows: don't hijack while typing
       if (isTypingForArrows()) return;
 
       if (e.key === "ArrowLeft") {
@@ -625,7 +749,7 @@ export default function PracticePage() {
       ? "border-rose-300/30 bg-rose-300/10"
       : "border-white/10 bg-white/5";
 
-  // --- VectorPad (2D only for practice) ---
+  // --- VectorPad (2D only) ---
   const zHeldRef = useRef(false);
 
   const padRef = useRef<VectorPadState>({
@@ -644,12 +768,19 @@ export default function PracticePage() {
     b: { x: 2, y: 1, z: 0 } as any,
   });
 
+  // ✅ keep b fixed from exercise for vector_drag_dot
   useEffect(() => {
     if (!current) return;
 
     padRef.current.mode = "2d";
-    padRef.current.a = current.dragA as any;
-    padRef.current.b = current.dragB as any;
+    padRef.current.a = { ...current.dragA } as any;
+
+    // if (current.exercise.kind === "vector_drag_dot") {
+    //   padRef.current.b = cloneVec(current.exercise.b) as any;
+    // } else {
+    //   padRef.current.b = { ...current.dragB } as any;
+    // }
+    padRef.current.b = { ...current.dragB } as any;
 
     padRef.current.showProjection = current.exercise.topic === "projection";
     padRef.current.showAngle = current.exercise.topic === "angle";
@@ -660,10 +791,9 @@ export default function PracticePage() {
   const allowBDrag =
     exercise?.kind === "vector_drag_target" ? !exercise.lockB : false;
 
-  // ✅ SUMMARY VIEW
+  // SUMMARY VIEW unchanged ...
   if (phase === "summary") {
     const pct = scorePct(correctCount, answeredCount);
-
     return (
       <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
         <div className="mx-auto max-w-5xl grid gap-4">
@@ -721,10 +851,11 @@ export default function PracticePage() {
     );
   }
 
-  // ✅ PRACTICE VIEW
+  // PRACTICE VIEW
+  const bFixed = current?.dragB;
+
   return (
     <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
-      {/* Confirm modal */}
       {confirmOpen ? (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <button
@@ -775,12 +906,19 @@ export default function PracticePage() {
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-5xl grid gap-4 lg:grid-cols-[380px_1fr]">
+      {/* ✅ wider left column on large screens + allow wrapping */}
+      <div className="mx-auto max-w-5xl grid gap-4 lg:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]">
         {/* LEFT */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
           <div className="border-b border-white/10 bg-black/20 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
+                {isAssignmentRun ? (
+                  <div className="mt-2 inline-flex rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] font-extrabold text-amber-200/90">
+                    Assignment mode • filters locked
+                  </div>
+                ) : null}
+
                 <div className="text-sm font-black tracking-tight">
                   Practice Generator
                 </div>
@@ -814,9 +952,11 @@ export default function PracticePage() {
                 Topic
               </label>
               <select
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none"
+                disabled={isAssignmentRun}
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 value={topic}
                 onChange={(e) => {
+                  if (isAssignmentRun) return;
                   const next = e.target.value as Topic | "all";
                   if (next === topic) return;
                   requestChange({ kind: "topic", value: next });
@@ -833,9 +973,11 @@ export default function PracticePage() {
                 Difficulty
               </label>
               <select
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none"
+                disabled={isAssignmentRun}
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 value={difficulty}
                 onChange={(e) => {
+                  if (isAssignmentRun) return;
                   const next = e.target.value as Difficulty | "all";
                   if (next === difficulty) return;
                   requestChange({ kind: "difficulty", value: next });
@@ -853,7 +995,6 @@ export default function PracticePage() {
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 disabled:opacity-50"
                   onClick={goPrev}
                   disabled={busy || !canGoPrev()}
-                  title="ArrowLeft"
                 >
                   Prev
                 </button>
@@ -862,7 +1003,6 @@ export default function PracticePage() {
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 disabled:opacity-50"
                   onClick={goNext}
                   disabled={busy || !canGoNext()}
-                  title="ArrowRight"
                 >
                   Next
                 </button>
@@ -870,8 +1010,7 @@ export default function PracticePage() {
                 <button
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 disabled:opacity-50"
                   onClick={submitAnswer}
-  disabled={busy || !exercise || !!current?.submitted}
-                  title="Enter"
+                  disabled={busy || !exercise || !!current?.submitted}
                 >
                   Submit
                 </button>
@@ -904,19 +1043,20 @@ export default function PracticePage() {
               ) : (
                 <>
                   <div className="font-extrabold">
-                    {current.result.ok ? "✅ Correct" : "❌ Not quite"}
+                    {current.revealed
+                      ? "👁️ Revealed (answer shown)"
+                      : current.result.ok
+                      ? "✅ Correct"
+                      : "❌ Not quite"}
                   </div>
+
                   {current.result.explanation ? (
                     <div className="mt-2 text-white/80">
                       {current.result.explanation}
                     </div>
                   ) : null}
-                  <div className="mt-2 text-white/60">
-                    <span className="font-extrabold">Expected:</span>{" "}
-                    <span className="font-mono">
-                      {JSON.stringify((current.result as any).expected)}
-                    </span>
-                  </div>
+
+                  <ExpectedSummary result={current.result as any} />
                 </>
               )}
             </div>
@@ -929,7 +1069,7 @@ export default function PracticePage() {
             <div className="text-sm font-black">
               {exercise?.title ?? (busy ? "Loading..." : "—")}
             </div>
-            <div className="mt-1 text-sm text-white/80">
+            <div className="mt-1 text-sm text-white/80 whitespace-pre-wrap break-words">
               {exercise?.prompt ?? ""}
             </div>
           </div>
@@ -965,7 +1105,7 @@ export default function PracticePage() {
                       checked={current.single === o.id}
                       onChange={() => updateCurrent({ single: o.id })}
                     />
-                    <span className="text-sm font-extrabold text-white/85">
+                    <span className="text-sm font-extrabold text-white/85 break-words">
                       {o.text}
                     </span>
                   </label>
@@ -992,7 +1132,7 @@ export default function PracticePage() {
                           })
                         }
                       />
-                      <span className="text-sm font-extrabold text-white/85">
+                      <span className="text-sm font-extrabold text-white/85 break-words">
                         {o.text}
                       </span>
                     </label>
@@ -1029,14 +1169,55 @@ export default function PracticePage() {
                   </span>{" "}
                   within tolerance <b>{exercise.tolerance}</b>.
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
+                  <div className="font-extrabold text-white/70">Vector Pad</div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-mono">
+                      Grid: 1 sq = {gridLabelStep} units
+                      {gridMode === "auto" ? " • Auto" : " • Locked"}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGridMode("auto");
+                        if (exercise) autoGridForExercise(exercise); // apply immediately
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-xs font-extrabold hover:bg-white/15 ${
+                        gridMode === "auto"
+                          ? "border-emerald-300/30 bg-emerald-300/15 text-white"
+                          : "border-white/10 bg-white/10 text-white/85"
+                      }`}
+                    >
+                      Auto
+                    </button>
+
+                    <select
+                      className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-extrabold text-white/90 outline-none"
+                      value={gridLabelStep}
+                      onChange={(e) => {
+                        const step = Number(e.target.value);
+                        setGridMode("fixed");
+                        setGrid(step);
+                      }}
+                    >
+                      {GRID_STEPS.map((s) => (
+                        <option key={s} value={s}>
+                          1 sq = {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
                 <VectorPad
+                  key={current.key}
                   mode="2d"
                   stateRef={padRef}
                   zHeldRef={zHeldRef}
                   handles={{ a: true, b: allowBDrag }}
                   onPreview={(aNow, bNow) => {
-                    // ✅ CLONE to avoid VectorPad mutating the same object reference
                     updateCurrent({
                       dragA: cloneVec(aNow),
                       dragB: cloneVec(bNow),
@@ -1051,28 +1232,9 @@ export default function PracticePage() {
                   }}
                   className="relative h-[520px] w-full"
                 />
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="text-white/60 font-extrabold">
-                      a (current)
-                    </div>
-                    <div className="font-mono text-white/85">
-                      ({current.dragA.x.toFixed(2)},{" "}
-                      {current.dragA.y.toFixed(2)})
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                    <div className="text-white/60 font-extrabold">b</div>
-                    <div className="font-mono text-white/85">
-                      ({current.dragB.x.toFixed(2)},{" "}
-                      {current.dragB.y.toFixed(2)})
-                    </div>
-                  </div>
-                </div>
               </div>
             ) : (
-              // vector_drag_dot
+              // ✅ vector_drag_dot
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
                   Drag <b>a</b> so that <b>a · b</b> ≈{" "}
@@ -1083,29 +1245,62 @@ export default function PracticePage() {
                   <div className="mt-1 text-white/60">
                     b is fixed:{" "}
                     <span className="font-mono text-white/85">
-                      ({exercise.b.x}, {exercise.b.y})
+                      ({current.dragB.x}, {current.dragB.y})
                     </span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
+                  <div className="font-extrabold text-white/70">Vector Pad</div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-mono">
+                      Grid: 1 sq = {gridLabelStep} units
+                      {gridMode === "auto" ? " • Auto" : " • Locked"}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGridMode("auto");
+                        if (exercise) autoGridForExercise(exercise); // apply immediately
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-xs font-extrabold hover:bg-white/15 ${
+                        gridMode === "auto"
+                          ? "border-emerald-300/30 bg-emerald-300/15 text-white"
+                          : "border-white/10 bg-white/10 text-white/85"
+                      }`}
+                    >
+                      Auto
+                    </button>
+
+                    <select
+                      className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-extrabold text-white/90 outline-none"
+                      value={gridLabelStep}
+                      onChange={(e) => {
+                        const step = Number(e.target.value);
+                        setGridMode("fixed");
+                        setGrid(step);
+                      }}
+                    >
+                      {GRID_STEPS.map((s) => (
+                        <option key={s} value={s}>
+                          1 sq = {s}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
                 <VectorPad
+                  key={current.key}
                   mode="2d"
                   stateRef={padRef}
                   zHeldRef={zHeldRef}
                   handles={{ a: true, b: false }}
-                  onPreview={(aNow, bNow) => {
-                    updateCurrent({
-                      dragA: cloneVec(aNow),
-                      dragB: cloneVec(bNow),
-                    });
-                  }}
+                  // ✅ IMPORTANT: only update a; b stays fixed
+                  onPreview={(aNow) => updateCurrent({ dragA: cloneVec(aNow) })}
+                  onCommit={(aNow) => updateCurrent({ dragA: cloneVec(aNow) })}
                   previewThrottleMs={80}
-                  onCommit={(aNow, bNow) => {
-                    updateCurrent({
-                      dragA: cloneVec(aNow),
-                      dragB: cloneVec(bNow),
-                    });
-                  }}
                   className="relative h-[520px] w-full"
                 />
 
@@ -1125,8 +1320,8 @@ export default function PracticePage() {
                     </div>
                     <div className="font-mono text-white/85">
                       {(
-                        current.dragA.x * current.dragB.x +
-                        current.dragA.y * current.dragB.y
+                        current.dragA.x * (bFixed?.x ?? 0) +
+                        current.dragA.y * (bFixed?.y ?? 0)
                       ).toFixed(2)}
                     </div>
                   </div>
@@ -1145,44 +1340,7 @@ export default function PracticePage() {
   );
 }
 
-/* ----------------- helpers ----------------- */
-
-function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
-  const ex = item.exercise;
-
-  if (ex.kind === "single_choice") {
-    if (!item.single) return undefined;
-    return { kind: "single_choice", optionId: item.single };
-  }
-
-  if (ex.kind === "multi_choice") {
-    if (!item.multi?.length) return undefined;
-    return { kind: "multi_choice", optionIds: item.multi };
-  }
-
-  if (ex.kind === "numeric") {
-    if (!item.num?.trim()) return undefined;
-    const v = Number(item.num);
-    if (!Number.isFinite(v)) return undefined;
-    return { kind: "numeric", value: v };
-  }
-
-  if (ex.kind === "vector_drag_target") {
-    return {
-      kind: "vector_drag_target",
-      a: { ...item.dragA },
-      b: { ...item.dragB },
-    };
-  }
-
-  if (ex.kind === "vector_drag_dot") {
-    return { kind: "vector_drag_dot", a: { ...item.dragA } };
-  }
-
-  return undefined;
-}
-
-/* ----------------- UI components ----------------- */
+/* ---------- UI components (unchanged) ---------- */
 
 function CongratsCard({
   title,
@@ -1243,8 +1401,10 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-black">{m.title}</div>
-              <div className="mt-1 text-xs text-white/70">{m.prompt}</div>
+              <div className="text-sm font-black break-words">{m.title}</div>
+              <div className="mt-1 text-xs text-white/70 whitespace-pre-wrap break-words">
+                {m.prompt}
+              </div>
             </div>
             <div className="rounded-full border border-rose-300/20 bg-rose-300/10 px-2 py-1 text-[11px] font-extrabold text-white/80">
               {m.topic.toUpperCase()} • {m.kind.replaceAll("_", " ")}
@@ -1269,12 +1429,182 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
             {m.explanation ? (
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-white/60 font-extrabold">Explanation</div>
-                <div className="mt-1 text-white/85">{m.explanation}</div>
+                <div className="mt-1 text-white/85 whitespace-pre-wrap break-words">
+                  {m.explanation}
+                </div>
               </div>
             ) : null}
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function DetailsBlock({ value }: { value: any }) {
+  return (
+    <details className="mt-2">
+      <summary className="cursor-pointer text-white/60 hover:text-white/80">
+        Details
+      </summary>
+      <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] text-white/75">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+function ExpectedSummary({ result }: { result: any }) {
+  const exp = result?.expected;
+  if (!exp) return null;
+
+  const card = "mt-2 rounded-xl border border-white/10 bg-black/20 p-3 text-xs";
+  const row = "flex items-center justify-between gap-2";
+  const label = "text-white/60 font-extrabold";
+  const mono = "font-mono text-white/85";
+
+  if (exp.kind === "numeric") {
+    return (
+      <div className={card}>
+        <div className={row}>
+          <div className={label}>Expected</div>
+          <div className={mono}>
+            {exp.value}
+            {exp.tolerance ? ` ± ${exp.tolerance}` : ""}
+          </div>
+        </div>
+
+        <div className={row + " mt-1"}>
+          <div className={label}>You</div>
+          <div className={mono}>{exp.debug?.receivedValue ?? "—"}</div>
+        </div>
+
+        <div className={row + " mt-1"}>
+          <div className={label}>Δ</div>
+          <div className={mono}>
+            {typeof exp.debug?.delta === "number"
+              ? exp.debug.delta.toFixed(4)
+              : "—"}
+          </div>
+        </div>
+
+        <DetailsBlock value={exp} />
+      </div>
+    );
+  }
+
+  if (exp.kind === "single_choice") {
+    return (
+      <div className={card}>
+        <div className={row}>
+          <div className={label}>Chosen</div>
+          <div className={mono}>{exp.debug?.chosen ?? "—"}</div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>Correct</div>
+          <div className={mono}>{exp.optionId ?? "—"}</div>
+        </div>
+        <DetailsBlock value={exp} />
+      </div>
+    );
+  }
+
+  if (exp.kind === "multi_choice") {
+    return (
+      <div className={card}>
+        <div className={row}>
+          <div className={label}>Chosen</div>
+          <div className={mono}>
+            {(exp.debug?.chosen ?? []).join(", ") || "—"}
+          </div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>Correct</div>
+          <div className={mono}>{(exp.optionIds ?? []).join(", ") || "—"}</div>
+        </div>
+        {exp.debug?.missing?.length || exp.debug?.extra?.length ? (
+          <div className="mt-2 text-white/70">
+            {exp.debug?.missing?.length ? (
+              <div>
+                <span className="font-extrabold">Missing:</span>{" "}
+                {exp.debug.missing.join(", ")}
+              </div>
+            ) : null}
+            {exp.debug?.extra?.length ? (
+              <div>
+                <span className="font-extrabold">Extra:</span>{" "}
+                {exp.debug.extra.join(", ")}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <DetailsBlock value={exp} />
+      </div>
+    );
+  }
+
+  if (exp.kind === "vector_drag_target") {
+    return (
+      <div className={card}>
+        <div className={row}>
+          <div className={label}>Target a*</div>
+          <div className={mono}>
+            ({exp.targetA?.x ?? "—"}, {exp.targetA?.y ?? "—"})
+          </div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>You</div>
+          <div className={mono}>
+            {exp.debug?.receivedA
+              ? `(${exp.debug.receivedA.x}, ${exp.debug.receivedA.y})`
+              : "—"}
+          </div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>Tolerance</div>
+          <div className={mono}>± {exp.tolerance}</div>
+        </div>
+        <DetailsBlock value={exp} />
+      </div>
+    );
+  }
+
+  if (exp.kind === "vector_drag_dot") {
+    return (
+      <div className={card}>
+        <div className={row}>
+          <div className={label}>Target a·b</div>
+          <div className={mono}>
+            {exp.targetDot} ± {exp.tolerance}
+          </div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>Your a·b</div>
+          <div className={mono}>
+            {typeof exp.debug?.dot === "number"
+              ? exp.debug.dot.toFixed(4)
+              : "—"}
+          </div>
+        </div>
+        <div className={row + " mt-1"}>
+          <div className={label}>|a|</div>
+          <div className={mono}>
+            {typeof exp.debug?.aMag === "number"
+              ? exp.debug.aMag.toFixed(4)
+              : "—"}{" "}
+            (min {exp.minMag})
+          </div>
+        </div>
+        <DetailsBlock value={exp} />
+      </div>
+    );
+  }
+
+  // fallback
+  return (
+    <div className={card}>
+      <div className="text-white/70">Expected data available.</div>
+      <DetailsBlock value={exp} />
     </div>
   );
 }

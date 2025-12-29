@@ -252,7 +252,9 @@ export default function VectorPad({
           drawArrow(o, prTip, COLORS.proj, 4);
 
           s.push();
-          s.stroke(stateRef.current.showPerp ? COLORS.perp : "rgba(255,255,255,0.18)");
+          s.stroke(
+            stateRef.current.showPerp ? COLORS.perp : "rgba(255,255,255,0.18)"
+          );
           s.strokeWeight(stateRef.current.showPerp ? 3 : 2);
           if (!stateRef.current.showPerp) {
             const steps = 10;
@@ -298,23 +300,23 @@ export default function VectorPad({
           s.pop();
         };
 
-        s.setup = () => {
-          const { w, h } = getSize();
-          W = w;
-          H = h;
-const c = s.canvas as any;
-c.tabIndex = 0;
-c.style.outline = "none";
-c.focus?.();
+s.setup = () => {
+  const { w, h } = getSize();
+  W = w;
+  H = h;
 
+  s.pixelDensity(1);
+  s.createCanvas(W, H);
 
-          s.pixelDensity(1);
-          s.createCanvas(W, H);
-          (s.canvas as any).style.touchAction = "none";
-          s.textFont(
-            "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
-          );
-        };
+  const c = s.canvas as any;
+  c.style.touchAction = "none";
+  c.tabIndex = 0;
+  c.style.outline = "none";
+  c.focus?.();
+
+  s.textFont("ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial");
+};
+
 
         s.windowResized = () => {
           const { w, h } = getSize();
@@ -339,9 +341,12 @@ c.focus?.();
 
           drawArrow(o, worldToScreen2(aV), COLORS.a, 4);
           drawArrow(o, worldToScreen2(bV), COLORS.b, 4);
+if (handlesMemo.a) drawHandle(worldToScreen2(aV), COLORS.a);
+else drawHandle(worldToScreen2(aV), "rgba(122,162,255,0.25)");
 
-          drawHandle(worldToScreen2(aV), COLORS.a);
-          drawHandle(worldToScreen2(bV), COLORS.b);
+if (handlesMemo.b) drawHandle(worldToScreen2(bV), COLORS.b);
+else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
+
 
           s.push();
           s.noStroke();
@@ -362,7 +367,7 @@ c.focus?.();
 
           const hitA = handlesMemo.a && dist2(mx, my, aTip.x, aTip.y) <= r2;
           const hitB = handlesMemo.b && dist2(mx, my, bTip.x, bTip.y) <= r2;
-(s.canvas as any).focus?.();
+          (s.canvas as any).focus?.();
 
           if (hitA && hitB) {
             const da = dist2(mx, my, aTip.x, aTip.y);
@@ -373,23 +378,24 @@ c.focus?.();
           else dragging = null;
         };
 
-       s.mouseDragged = (evt: any) => {
-  if (!dragging) return;
-  const st = stateRef.current;
+        s.mouseDragged = (evt: any) => {
+          if (!dragging) return;
+          const st = stateRef.current;
 
-  const w = screenToWorld2(s.mouseX, s.mouseY);
+          const w = screenToWorld2(s.mouseX, s.mouseY);
 
-  // ✅ reliable Shift detection
-  const shiftDown = !!evt?.shiftKey || s.keyIsDown(16);
+          // ✅ reliable Shift detection
+          const shiftDown = !!evt?.shiftKey || s.keyIsDown(16);
 
-  const snapped = maybeSnap2(w, shiftDown);
+          const snapped = maybeSnap2(w, shiftDown);
 
-  if (dragging === "a") emitPreview(snapped, st.b);
-  else emitPreview(st.a, snapped);
-};
+          if (dragging === "a") emitPreview(snapped, st.b);
+          else emitPreview(st.a, snapped);
+        };
 
         s.mouseReleased = () => {
-          if (dragging) emitCommit({ ...stateRef.current.a }, { ...stateRef.current.b });
+          if (dragging)
+            emitCommit({ ...stateRef.current.a }, { ...stateRef.current.b });
           dragging = null;
         };
       };
@@ -424,7 +430,12 @@ c.focus?.();
         // ---- ✅ robust 3D->2D for picking (fixes "spheres not draggable") ----
         const normalizeToTopLeft = (pt: { x: number; y: number }) => {
           // If it looks like a centered coordinate, convert to top-left.
-          if (pt.x >= -W / 2 && pt.x <= W / 2 && pt.y >= -H / 2 && pt.y <= H / 2) {
+          if (
+            pt.x >= -W / 2 &&
+            pt.x <= W / 2 &&
+            pt.y >= -H / 2 &&
+            pt.y <= H / 2
+          ) {
             return { x: pt.x + W / 2, y: pt.y + H / 2 };
           }
           return pt;
@@ -433,9 +444,12 @@ c.focus?.();
         const getMat4 = (m: any): number[] | null => {
           if (!m) return null;
           if (Array.isArray(m) && m.length === 16) return m as number[];
-          if (Array.isArray(m?.mat4) && m.mat4.length === 16) return m.mat4 as number[];
-          if (Array.isArray(m?._mat4) && m._mat4.length === 16) return m._mat4 as number[];
-          if (Array.isArray(m?.mat) && m.mat.length === 16) return m.mat as number[];
+          if (Array.isArray(m?.mat4) && m.mat4.length === 16)
+            return m.mat4 as number[];
+          if (Array.isArray(m?._mat4) && m._mat4.length === 16)
+            return m._mat4 as number[];
+          if (Array.isArray(m?.mat) && m.mat.length === 16)
+            return m.mat as number[];
           return null;
         };
 
@@ -470,7 +484,13 @@ c.focus?.();
           const pr = getMat4(r?.uPMatrix);
           if (!mv || !pr) return null;
 
-          const mulMat4Vec4 = (m: number[], vx: number, vy: number, vz: number, vw: number) => ({
+          const mulMat4Vec4 = (
+            m: number[],
+            vx: number,
+            vy: number,
+            vz: number,
+            vw: number
+          ) => ({
             x: m[0] * vx + m[4] * vy + m[8] * vz + m[12] * vw,
             y: m[1] * vx + m[5] * vy + m[9] * vz + m[13] * vw,
             z: m[2] * vx + m[6] * vy + m[10] * vz + m[14] * vw,
@@ -490,14 +510,25 @@ c.focus?.();
           return { sx, sy };
         };
 
-        const isNear = (p: { sx: number; sy: number } | null, mx: number, my: number, r = 18) => {
+        const isNear = (
+          p: { sx: number; sy: number } | null,
+          mx: number,
+          my: number,
+          r = 18
+        ) => {
           if (!p) return false;
           const dx = p.sx - mx;
           const dy = p.sy - my;
           return dx * dx + dy * dy <= r * r;
         };
 
-        const labelAt = (x: number, y: number, z: number, text: string, col: string) => {
+        const labelAt = (
+          x: number,
+          y: number,
+          z: number,
+          text: string,
+          col: string
+        ) => {
           const sp = worldToScreen(x, y, z);
           if (!sp) return;
 
@@ -523,8 +554,10 @@ c.focus?.();
           const worldStep = step * stateRef.current.scale;
           const half = 10 * worldStep;
 
-          for (let x = -half; x <= half; x += worldStep) s.line(x, -half, 0, x, half, 0);
-          for (let y = -half; y <= half; y += worldStep) s.line(-half, y, 0, half, y, 0);
+          for (let x = -half; x <= half; x += worldStep)
+            s.line(x, -half, 0, x, half, 0);
+          for (let y = -half; y <= half; y += worldStep)
+            s.line(-half, y, 0, half, y, 0);
 
           s.stroke(COLORS.axis);
           s.strokeWeight(2);
@@ -567,7 +600,13 @@ c.focus?.();
           s.line(0, 0, 0, ub.x * sc, -ub.y * sc, ub.z * sc);
           s.pop();
 
-          labelAt(ub.x * sc, -ub.y * sc, ub.z * sc, "û_b", "rgba(255,255,255,0.85)");
+          labelAt(
+            ub.x * sc,
+            -ub.y * sc,
+            ub.z * sc,
+            "û_b",
+            "rgba(255,255,255,0.85)"
+          );
         };
 
         const drawProjection3D = (A: Vec3, B: Vec3) => {
@@ -585,9 +624,18 @@ c.focus?.();
           s.pop();
 
           s.push();
-          s.stroke(stateRef.current.showPerp ? COLORS.perp : "rgba(255,255,255,0.18)");
+          s.stroke(
+            stateRef.current.showPerp ? COLORS.perp : "rgba(255,255,255,0.18)"
+          );
           s.strokeWeight(stateRef.current.showPerp ? 3 : 2);
-          s.line(pr.x * sc, -pr.y * sc, pr.z * sc, A.x * sc, -A.y * sc, A.z * sc);
+          s.line(
+            pr.x * sc,
+            -pr.y * sc,
+            pr.z * sc,
+            A.x * sc,
+            -A.y * sc,
+            A.z * sc
+          );
           s.pop();
 
           labelAt(pr.x * sc, -pr.y * sc, pr.z * sc, "proj_b(a)", COLORS.proj);
@@ -644,7 +692,8 @@ c.focus?.();
           const A = st.a;
           const B = st.b;
 
-          const zDown = st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
+          const zDown =
+            st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
 
           if (!dragging) {
             (s as any).orbitControl?.(1, 1, 0.15);
@@ -681,7 +730,9 @@ c.focus?.();
             12
           );
           s.text(
-            `Depth: ${zDown ? "ON" : "off"}  |  a.z=${st.a.z.toFixed(2)}  b.z=${st.b.z.toFixed(2)}`,
+            `Depth: ${zDown ? "ON" : "off"}  |  a.z=${st.a.z.toFixed(
+              2
+            )}  b.z=${st.b.z.toFixed(2)}`,
             12,
             28
           );
@@ -716,44 +767,45 @@ c.focus?.();
           lastMouse = dragging ? { x: s.mouseX, y: s.mouseY } : null;
         };
 
-     s.mouseDragged = (evt: any) => {
-  if (!dragging) return;
+        s.mouseDragged = (evt: any) => {
+          if (!dragging) return;
 
-  const st = stateRef.current;
+          const st = stateRef.current;
 
-  if (!lastMouse) lastMouse = { x: s.mouseX, y: s.mouseY };
-  const dx = s.mouseX - lastMouse.x;
-  const dy = s.mouseY - lastMouse.y;
-  lastMouse = { x: s.mouseX, y: s.mouseY };
+          if (!lastMouse) lastMouse = { x: s.mouseX, y: s.mouseY };
+          const dx = s.mouseX - lastMouse.x;
+          const dy = s.mouseY - lastMouse.y;
+          lastMouse = { x: s.mouseX, y: s.mouseY };
 
-  // ✅ reliable Shift detection
-  const shiftDown =
-    !!evt?.shiftKey || (s as any).keyIsDown?.(16) || s.keyIsDown(16);
+          // ✅ reliable Shift detection
+          const shiftDown =
+            !!evt?.shiftKey || (s as any).keyIsDown?.(16) || s.keyIsDown(16);
 
-  const zDown = st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
+          const zDown =
+            st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
 
-  const spd = dragSpeed();
-  const zMult = 4;
+          const spd = dragSpeed();
+          const zMult = 4;
 
-  const cur = dragging === "a" ? st.a : st.b;
-  let next: Vec3 = { ...cur };
+          const cur = dragging === "a" ? st.a : st.b;
+          let next: Vec3 = { ...cur };
 
-  if (zDown) {
-    next.z = cur.z + -dy * spd * zMult;
-  } else {
-    next.x = cur.x + dx * spd;
-    next.y = cur.y + -dy * spd;
-  }
+          if (zDown) {
+            next.z = cur.z + -dy * spd * zMult;
+          } else {
+            next.x = cur.x + dx * spd;
+            next.y = cur.y + -dy * spd;
+          }
 
-  next = maybeSnap3(next, shiftDown);
+          next = maybeSnap3(next, shiftDown);
 
-  if (dragging === "a") emitPreview(next, st.b);
-  else emitPreview(st.a, next);
-};
-
+          if (dragging === "a") emitPreview(next, st.b);
+          else emitPreview(st.a, next);
+        };
 
         s.mouseReleased = () => {
-          if (dragging) emitCommit({ ...stateRef.current.a }, { ...stateRef.current.b });
+          if (dragging)
+            emitCommit({ ...stateRef.current.a }, { ...stateRef.current.b });
           dragging = null;
           lastMouse = null;
         };
@@ -772,5 +824,7 @@ c.focus?.();
     };
   }, [mode, previewThrottleMs, handlesMemo.a, handlesMemo.b]);
 
-  return <div ref={mountRef} className={className ?? "relative h-full w-full"} />;
+  return (
+    <div ref={mountRef} className={className ?? "relative h-full w-full"} />
+  );
 }
