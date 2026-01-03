@@ -17,7 +17,22 @@ import {
   Cell,
 } from "recharts";
 
-type Topic = "dot" | "projection" | "angle" | "vectors";
+export type Topic =
+  // Module 0
+  | "dot"
+  | "projection"
+  | "angle"
+  | "vectors"
+  // Module 1
+  | "linear_systems"
+  | "augmented"
+  | "rref"
+  | "solution_types"
+  | "parametric"
+  // Module 2
+  | "matrix_ops"
+  | "matrix_inverse"
+  | "matrix_properties";
 type Difficulty = "easy" | "medium" | "hard";
 
 type ProgressResponse = {

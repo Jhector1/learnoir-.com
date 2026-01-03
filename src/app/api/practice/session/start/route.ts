@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PracticeDifficulty } from "@prisma/client";
-import { getPracticeActor } from "@/lib/practice/actor";
+import { getActor } from "@/lib/practice/actor";
+// import { getPracticeActor } from "@/lib/practice/actor";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Section not found" }, { status: 404 });
   }
 
-  const actor = await getPracticeActor();
+  const actor = await getActor();
 
   const session = await prisma.practiceSession.create({
     data: {

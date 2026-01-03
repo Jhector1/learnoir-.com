@@ -1,12 +1,15 @@
 // src/app/api/practice/session/[id]/review/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revealExpected } from "@/lib/practice/validate";
 
 export const runtime = "nodejs";
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const id = params.id;
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
 
   const session = await prisma.practiceSession.findUnique({
     where: { id },

@@ -87,6 +87,8 @@ export default function VectorPad({
       }
 
       const create2DSketch = () => (s: p5) => {
+        let canvasEl: HTMLCanvasElement | null = null;
+
         const getSize = () => {
           const el = mountRef.current!;
           const r = el.getBoundingClientRect();
@@ -306,15 +308,18 @@ s.setup = () => {
   H = h;
 
   s.pixelDensity(1);
-  s.createCanvas(W, H);
 
-  const c = s.canvas as any;
-  c.style.touchAction = "none";
-  c.tabIndex = 0;
-  c.style.outline = "none";
-  c.focus?.();
+  const renderer = s.createCanvas(W, H); // ✅ only once
+  canvasEl = renderer.elt as HTMLCanvasElement;
 
-  s.textFont("ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial");
+  canvasEl.style.touchAction = "none";
+  canvasEl.tabIndex = 0;
+  canvasEl.style.outline = "none";
+  canvasEl.focus?.();
+
+  s.textFont(
+    "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+  );
 };
 
 
@@ -367,7 +372,7 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
 
           const hitA = handlesMemo.a && dist2(mx, my, aTip.x, aTip.y) <= r2;
           const hitB = handlesMemo.b && dist2(mx, my, bTip.x, bTip.y) <= r2;
-          (s.canvas as any).focus?.();
+  canvasEl?.focus();
 
           if (hitA && hitB) {
             const da = dist2(mx, my, aTip.x, aTip.y);
@@ -401,6 +406,8 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
       };
 
       const create3DSketch = () => (s: p5) => {
+        let canvasEl: HTMLCanvasElement | null = null;
+
         const getSize = () => {
           const el = mountRef.current!;
           const r = el.getBoundingClientRect();
@@ -665,19 +672,22 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
           );
         };
 
-        s.setup = () => {
-          const { w, h } = getSize();
-          W = w;
-          H = h;
-          s.pixelDensity(1); // ✅ prevents hit-test drift on retina
-          s.createCanvas(W, H, s.WEBGL);
+      s.setup = () => {
+  const { w, h } = getSize();
+  W = w;
+  H = h;
 
-          const c = s.canvas as any;
-          c.style.touchAction = "none";
-          c.tabIndex = 0;
-          c.style.outline = "none";
-          c.focus?.();
-        };
+  s.pixelDensity(1);
+
+  const renderer = s.createCanvas(W, H, (s as any).WEBGL); // ✅ WEBGL REQUIRED
+  canvasEl = renderer.elt as HTMLCanvasElement;
+
+  canvasEl.style.touchAction = "none";
+  canvasEl.tabIndex = 0;
+  canvasEl.style.outline = "none";
+  canvasEl.focus?.();
+};
+
 
         s.windowResized = () => {
           const { w, h } = getSize();
@@ -740,8 +750,7 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
         };
 
         s.mousePressed = () => {
-          (s.canvas as any).focus?.();
-
+canvasEl?.focus();
           const st = stateRef.current;
           const sc = st.scale;
 

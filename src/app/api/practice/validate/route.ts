@@ -1,6 +1,8 @@
 // src/app/api/practice/validate/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
 import {
   attachGuestCookie,
   ensureGuestId,
@@ -201,17 +203,45 @@ export async function POST(req: Request) {
   let expected: any = null;
   let explanation = "";
 
- if (instance.kind === "numeric") {
-  const expectedValue = Number(secret.expected ?? secret.expected?.value ?? 0);
-  const tol = Number(secret.tolerance ?? 0);
+if (instance.kind === "numeric") {
+  const exp = (secret as any)?.expected;
+
+  // ✅ handle both shapes:
+  // 1) expected: { value, tolerance }
+  // 2) expectedValue / correctValue + tolerance
+  const expectedValue =
+    typeof exp === "number"
+      ? exp
+      : Number(
+          (exp && typeof exp === "object" ? exp.value : undefined) ??
+            (secret as any)?.expectedValue ??
+            (secret as any)?.correctValue ??
+            0
+        );
+
+  const tol = Number(
+    (exp && typeof exp === "object" ? exp.tolerance : undefined) ??
+      (secret as any)?.tolerance ??
+      0
+  );
 
   const raw = (body.answer as any)?.value;
   const received = Number(raw);
   const receivedOk = Number.isFinite(received);
 
+  // ✅ if server stored something invalid, fail loudly instead of NaN→null
+  if (!Number.isFinite(expectedValue)) {
+    return NextResponse.json(
+      { message: "Server bug: invalid expected numeric value.", debug: { exp, secret } },
+      { status: 500 }
+    );
+  }
+
   const delta = receivedOk ? received - expectedValue : null;
 
-  ok = body.reveal ? false : receivedOk && closeEnough(received, expectedValue, tol);
+  ok = body.reveal
+    ? false
+    : receivedOk && closeEnough(received, expectedValue, tol);
 
   expected = {
     kind: "numeric",
@@ -408,7 +438,7 @@ else if (instance.kind === "vector_drag_dot") {
       instanceId: instance.id,
       userId: actor.userId ?? null,
       guestId: actor.guestId ?? null,
-      answerPayload: isReveal ? { reveal: true } : body.answer ?? null,
+answerPayload: isReveal ? { reveal: true } : (body.answer ?? Prisma.JsonNull),
       ok: isReveal ? false : ok,
       revealUsed: isReveal,
     },

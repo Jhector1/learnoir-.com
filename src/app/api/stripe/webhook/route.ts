@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
@@ -36,14 +36,14 @@ async function upsertFromStripeSubscription(sub: Stripe.Subscription, userId?: s
       stripeSubscriptionId: sub.id,
       status: sub.status as any,
       priceId: priceId ?? undefined,
-      currentPeriodEnd: toDate(sub.current_period_end) ?? undefined,
+      currentPeriodEnd: toDate(sub.ended_at) ?? undefined,
       cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
       trialEnd: toDate(sub.trial_end) ?? undefined,
     },
     update: {
       status: sub.status as any,
       priceId: priceId ?? undefined,
-      currentPeriodEnd: toDate(sub.current_period_end) ?? undefined,
+      currentPeriodEnd: toDate(sub.ended_at) ?? undefined,
       cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
       trialEnd: toDate(sub.trial_end) ?? undefined,
     },

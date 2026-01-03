@@ -16,7 +16,11 @@ import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const TOPICS: Topic[] = ["dot", "projection", "angle", "vectors"];
+const TOPICS: Topic[] = [
+  "dot","projection","angle","vectors",
+  "linear_systems","rref","solution_types","parametric",
+  "matrix_ops","matrix_inverse","matrix_properties",
+];
 const DIFFS: Difficulty[] = ["easy", "medium", "hard"];
 
 function asTopicOrAll(v: string | null): Topic | "all" {

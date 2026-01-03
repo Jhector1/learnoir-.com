@@ -165,7 +165,6 @@ export default async function AdminDashboardPage() {
             {/* IMPORTANT: fixed height container prevents width(-1)/height(-1) */}
             <div className="h-72 w-full min-w-0">
               {/* client chart */}
-              {/* @ts-expect-error Server->Client */}
               <AdminAttemptsChart data={series} />
             </div>
           </div>

@@ -126,7 +126,8 @@ export default function PracticePage() {
   const [showMissed, setShowMissed] = useState(true);
 
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null); // /api/practice
+  const [actionErr, setActionErr] = useState<string | null>(null); // validate/reveal
 
   const [stack, setStack] = useState<QItem[]>([]);
   const [idx, setIdx] = useState(0);
@@ -286,11 +287,6 @@ export default function PracticePage() {
     setPendingChange(null);
   }
 
-  useEffect(() => {
-    if (!exercise) return;
-    autoGridForExercise(exercise);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.key]);
 
   useEffect(() => {
     if (!confirmOpen) return;
@@ -363,7 +359,7 @@ export default function PracticePage() {
               : 0
           );
 
-          setErr(null);
+          setLoadErr(null);
           restoredRef.current = true;
           firstFiltersEffectRef.current = true;
           skipUrlSyncRef.current = true;
@@ -382,7 +378,7 @@ export default function PracticePage() {
     setShowMissed(true);
     setStack([]);
     setIdx(0);
-    setErr(null);
+    setLoadErr(null);
 
     restoredRef.current = false;
     firstFiltersEffectRef.current = true;
@@ -489,7 +485,7 @@ export default function PracticePage() {
     abortRef.current = controller;
 
     setBusy(true);
-    setErr(null);
+    setLoadErr(null);
 
     try {
       const qs = new URLSearchParams();
@@ -525,7 +521,7 @@ export default function PracticePage() {
       });
     } catch (e: any) {
       if (e?.name === "AbortError") return;
-      setErr(e?.message ?? "Failed to load question");
+      setLoadErr(e?.message ?? "Failed to load question");
     } finally {
       if (abortRef.current === controller) setBusy(false);
     }
@@ -539,7 +535,7 @@ export default function PracticePage() {
       return;
     }
 
-    setErr(null);
+    setLoadErr(null);
     setPhase("practice");
     setShowMissed(true);
     setSessionId(null);
@@ -587,9 +583,17 @@ export default function PracticePage() {
     await loadNextExercise();
   }
 
-  async function submitAnswer() {
-    if (!current || !exercise) return;
+const submitLockRef = useRef(false);
 
+async function submitAnswer() {
+  if (submitLockRef.current) return;
+  if (!current || !exercise) return;
+  if (busy) return; // optional safety
+
+  submitLockRef.current = true;
+  setActionErr(null);
+
+  try {
     // ✅ for vector questions: read live a/b directly from VectorPad stateRef
     let answer: SubmitAnswer | undefined;
 
@@ -606,15 +610,14 @@ export default function PracticePage() {
     }
 
     if (!answer) {
-      setErr("Answer is incomplete or invalid.");
+      setActionErr("Answer is incomplete or invalid.");
       return;
     }
 
     // ✅ keep the UI state in sync with what we actually submit
     if (exercise.kind === "vector_drag_dot") {
       updateCurrent({ dragA: cloneVec(padRef.current.a) });
-    }
-    if (exercise.kind === "vector_drag_target") {
+    } else if (exercise.kind === "vector_drag_target") {
       updateCurrent({
         dragA: cloneVec(padRef.current.a),
         dragB: cloneVec(padRef.current.b),
@@ -622,34 +625,32 @@ export default function PracticePage() {
     }
 
     setBusy(true);
-    setErr(null);
 
-    try {
-      const r = await fetch("/api/practice/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: current.key, answer }),
-      });
+    const r = await fetch("/api/practice/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: current.key, answer }),
+    });
 
-      const data = (await readJsonSafe(r)) as ValidateResponse;
-      if (!r.ok)
-        throw new Error(
-          (data as any)?.message || `Validate failed (${r.status})`
-        );
-
-      updateCurrent({ result: data, submitted: true, revealed: false });
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to submit");
-    } finally {
-      setBusy(false);
+    const data = (await readJsonSafe(r)) as ValidateResponse;
+    if (!r.ok) {
+      throw new Error((data as any)?.message || `Validate failed (${r.status})`);
     }
+
+    updateCurrent({ result: data, submitted: true, revealed: false });
+  } catch (e: any) {
+    setActionErr(e?.message ?? "Failed to submit");
+  } finally {
+    setBusy(false);
+    submitLockRef.current = false;
   }
+}
 
   async function revealAnswer() {
-    if (!current) return;
+  if (!current || busy) return;
 
     setBusy(true);
-    setErr(null);
+    setActionErr(null);
 
     try {
       const r = await fetch("/api/practice/validate", {
@@ -679,60 +680,81 @@ export default function PracticePage() {
       if (solA) padRef.current.a = cloneVec(solA) as any;
       if (bExp) padRef.current.b = cloneVec(bExp) as any;
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to reveal");
+      setActionErr(e?.message ?? "Failed to submit");
     } finally {
       setBusy(false);
     }
   }
+useEffect(() => {
+  const activeTag = () => {
+    const el = document.activeElement as HTMLElement | null;
+    return el?.tagName?.toLowerCase() ?? "";
+  };
 
-  useEffect(() => {
-    const activeTag = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return el?.tagName?.toLowerCase() ?? "";
-    };
+  const isTypingForArrows = () => {
+    const tag = activeTag();
+    if (tag === "textarea" || tag === "select") return true;
+    if (tag === "input") return true;
+    return false;
+  };
 
-    const isTypingForArrows = () => {
-      const tag = activeTag();
-      if (tag === "textarea" || tag === "select") return true;
-      if (tag === "input") return true;
-      return false;
-    };
+  const shouldBlockEnter = () => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return false;
 
-    const shouldBlockEnter = () => {
-      const tag = activeTag();
-      return tag === "select" || tag === "textarea";
-    };
+    const tag = el.tagName.toLowerCase();
+    if (tag === "select" || tag === "textarea") return true;
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (confirmOpen) return;
-      if (phase !== "practice") return;
-      if (busy) return;
-      if (!exercise) return;
+    if (tag === "input") {
+      const t = (el as HTMLInputElement).type;
+      if (t === "checkbox" || t === "radio") return true;
+    }
 
-      if (e.key === "Enter") {
-        if (shouldBlockEnter()) return;
-        e.preventDefault();
-        void submitAnswer();
-        return;
-      }
+    return false;
+  };
 
-      if (isTypingForArrows()) return;
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (confirmOpen) return;
+    if (phase !== "practice") return;
+    if (busy) return;
+    if (!exercise) return;
+    if (e.repeat) return;
 
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        goPrev();
-        return;
-      }
-      if (e.key === "ArrowRight") {
-        e.preventDefault();
-        void goNext();
-        return;
-      }
-    };
+    if (e.key === "Enter") {
+      if (shouldBlockEnter()) return;
+      if (current?.submitted) return;
+      e.preventDefault();
+      void submitAnswer();
+      return;
+    }
 
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [confirmOpen, phase, busy, exercise, idx, stack.length, answeredCount]);
+    if (isTypingForArrows()) return;
+
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      goPrev();
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      void goNext();
+      return;
+    }
+  };
+
+  document.addEventListener("keydown", onKeyDown);
+  return () => document.removeEventListener("keydown", onKeyDown);
+}, [
+  confirmOpen,
+  phase,
+  busy,
+  exercise,
+  current,       // ✅ IMPORTANT
+  submitAnswer,  // ✅ IMPORTANT
+  idx,
+  stack.length,
+  answeredCount,
+]);
 
   const badge = useMemo(() => {
     if (!exercise) return "";
@@ -1031,10 +1053,10 @@ export default function PracticePage() {
             <div
               className={`mt-2 rounded-2xl border p-3 text-xs leading-relaxed ${resultBox}`}
             >
-              {err ? (
+              {actionErr ? (
                 <div className="text-white/80">
                   <div className="font-extrabold">⚠️ Error</div>
-                  <div className="mt-1 text-white/70">{err}</div>
+                  <div className="mt-1 text-white/70">{actionErr}</div>
                 </div>
               ) : !current?.result ? (
                 <div className="text-white/70">
@@ -1075,10 +1097,10 @@ export default function PracticePage() {
           </div>
 
           <div className="p-4">
-            {err ? (
+            {loadErr ? (
               <div className="rounded-xl border border-rose-300/30 bg-rose-300/10 p-3 text-sm text-white/85">
                 <div className="font-black">Couldn’t load a question</div>
-                <div className="mt-1 text-xs text-white/70">{err}</div>
+                <div className="mt-1 text-xs text-white/70">{loadErr}</div>
                 <div className="mt-3 flex gap-2">
                   <button
                     className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15"

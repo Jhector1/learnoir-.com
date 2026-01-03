@@ -7,15 +7,21 @@ import { Topic } from "@/lib/practice/types";
 
 type PracticeTopic = Topic | "all";
 type PracticeDifficulty = "easy" | "medium" | "hard";
-
 type Section = {
   id: string;
   slug: string;
   title: string;
   description: string | null;
   order: number;
-  topics: Exclude<PracticeTopic, "all">[]; // sections store real topics only
+  topics: Exclude<PracticeTopic, "all">[];
+  meta?: {
+    module?: number;
+    weeks?: string;
+    bullets?: string[];
+    skills?: string[];
+  } | null;
 };
+
 
 const DIFFS: { id: PracticeDifficulty; label: string; hint: string }[] = [
   { id: "easy", label: "Easy", hint: "Warm up" },
@@ -179,6 +185,36 @@ export default function PracticeSectionsPage() {
                       </Link>
                     </div>
                   </div>
+
+                  {(s.meta?.weeks || s.meta?.bullets?.length) ? (
+  <details className="mt-3">
+    <summary className="cursor-pointer text-xs font-extrabold text-white/70 hover:text-white/90">
+      What you’ll learn {s.meta?.weeks ? `• ${s.meta.weeks}` : ""}
+    </summary>
+
+    <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-3">
+      {s.meta?.bullets?.length ? (
+        <ul className="list-disc pl-4 text-xs text-white/70 space-y-1">
+          {s.meta.bullets.map((b, i) => <li key={i}>{b}</li>)}
+        </ul>
+      ) : null}
+
+      {s.meta?.skills?.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {s.meta.skills.map((k, i) => (
+            <span
+              key={i}
+              className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-extrabold text-white/70"
+            >
+              {k}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  </details>
+) : null}
+
                 </div>
               );
             })

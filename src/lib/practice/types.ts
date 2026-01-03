@@ -1,5 +1,21 @@
 export type Difficulty = "easy" | "medium" | "hard";
-export type Topic = "dot" | "projection" | "angle" | "vectors";
+export type Topic =
+  // Module 0
+  | "dot"
+  | "projection"
+  | "angle"
+  | "vectors"
+  // Module 1
+  | "linear_systems"
+  | "augmented"
+  | "rref"
+  | "solution_types"
+  | "parametric"
+  // Module 2
+  | "matrix_ops"
+  | "matrix_inverse"
+  | "matrix_properties";
+
 
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -15,12 +31,14 @@ export type SingleChoiceExercise = ExerciseBase & {
   kind: "single_choice";
   options: { id: string; text: string }[];
   correctOptionId: string;
+    tolerance: number;
 };
 
 export type MultiChoiceExercise = ExerciseBase & {
   kind: "multi_choice";
   options: { id: string; text: string }[];
   correctOptionIds: string[];
+    tolerance: number;
 };
 
 export type NumericExercise = ExerciseBase & {

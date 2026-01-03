@@ -1,6 +1,7 @@
 // src/lib/practice/actor.ts
 import { cookies, headers } from "next/headers";
 import { auth } from "@/lib/auth"; // <- your server auth helper
+import { NextResponse } from "next/server";
 
 export type Actor = { userId?: string; guestId?: string };
 
@@ -32,7 +33,8 @@ export function ensureGuestId(actor: Actor) {
   return { actor: { ...actor, guestId: gid }, setGuestId: gid };
 }
 
-export function attachGuestCookie(res: NextResponse, guestId?: string) {
+export function attachGuestCookie(res: NextResponse,   guestId?: string | null
+) {
   if (!guestId) return res;
   res.cookies.set("guestId", guestId, {
     httpOnly: true,

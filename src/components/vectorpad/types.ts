@@ -21,13 +21,30 @@ export type VectorPadState = {
   b: Vec3;
 };
 
-export const topicOptions: { id: Topic | "all"; label: string }[] = [
+export const topicOptions = [
   { id: "all", label: "All topics" },
+
+  // Module 0
   { id: "dot", label: "Dot product" },
   { id: "projection", label: "Projection" },
   { id: "angle", label: "Angle / properties" },
   { id: "vectors", label: "Vectors (drag)" },
-];
+
+  // Module 1
+
+  { id: "linear_systems", label: "Module 1: Linear systems" },
+  { id: "augmented", label: "Module 1: Augmented matrices" },
+  { id: "rref", label: "Module 1: RREF" },
+  { id: "solution_types", label: "Module 1: Solution types" },
+  { id: "parametric", label: "Module 1: Parametric solutions" },
+
+  // Module 2
+  { id: "matrix_ops", label: "Matrix ops (add/mul/transpose)" },
+  { id: "matrix_inverse", label: "Identity / matrix_inverse" },
+//   { id: "elementary", label: "Elementary matrices" },
+//   { id: "matrix_props", label: "Matrix properties" },
+] as const;
+
 // import type { Difficulty } from "@/lib/practice/types";
 
 export const difficultyOptions: { id: Difficulty | "all"; label: string }[] = [

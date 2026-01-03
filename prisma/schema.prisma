@@ -20,7 +20,50 @@ enum PracticeTopic {
   projection
   angle
   vectors
+
+  linear_linear_systems
+  augmented
+  rref
+  solution_types
+  parametric
+
+
+   // Module 2 — Matrices
+  matrix_ops
+  matrix_matrix_inverse
+  matrix_properties
 }
+
+
+
+model PracticeModule {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  order       Int      @default(0)
+
+  // optional but useful for “Weeks 1–2”
+  weekStart   Int?
+  weekEnd     Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections PracticeSection[]
+
+  @@index([order])
+}
+
+
+
+
+
+
+
+
+
+
 
 enum PracticeKind {
   single_choice
@@ -109,12 +152,19 @@ model PracticeSection {
   order       Int             @default(0)
   topics      PracticeTopic[]
 
+  moduleId String?
+  module   PracticeModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  meta        Json?           // ✅ store module info (weeks, bullets, skills, etc.)
 
   sessions    PracticeSession[]
   assignments Assignment[]      @relation("SectionAssignments")
+
+  @@index([moduleId])
 }
+
 
 model PracticeSession {
   id     String                @id @default(cuid())
