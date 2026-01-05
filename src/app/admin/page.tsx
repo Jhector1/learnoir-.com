@@ -2,7 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+import type { Prisma } from "@prisma/client";
 
+type RecentAssignment = Prisma.AssignmentGetPayload<{
+  include: { section: { select: { title: true; slug: true } } };
+}>;
 function Card({
   title,
   value,
@@ -35,55 +39,53 @@ export default async function AdminDashboardPage() {
   const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const d14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-  const [
-    sectionsCount,
-    assignmentsCount,
-    publishedAssignmentsCount,
-    sessions7d,
-    attempts7d,
-    correct7d,
-    recentAssignments,
-    recentSessions,
-    seriesRows,
-  ] = await Promise.all([
-    prisma.practiceSection.count(),
-    prisma.assignment.count(),
-    prisma.assignment.count({ where: { status: "published" } }),
+const [
+  sectionsCount,
+  assignmentsCount,
+  publishedAssignmentsCount,
+  sessions7d,
+  attempts7d,
+  correct7d,
+  recentAssignments,
+  recentSessions,
+  seriesRows,
+] = await Promise.all([
+  prisma.practiceSection.count(),
+  prisma.assignment.count(),
+  prisma.assignment.count({ where: { status: "published" } }),
 
-    prisma.practiceSession.count({ where: { startedAt: { gte: d7 } } }),
+  prisma.practiceSession.count({ where: { startedAt: { gte: d7 } } }),
 
-    prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 } } }),
-    prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 }, ok: true } }),
+  prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 } } }),
+  prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 }, ok: true } }),
 
-    prisma.assignment.findMany({
-      orderBy: [{ updatedAt: "desc" }],
-      take: 6,
-      include: { section: { select: { title: true, slug: true } } },
-    }),
+  prisma.assignment.findMany({
+    orderBy: [{ updatedAt: "desc" }],
+    take: 6,
+    include: { section: { select: { title: true, slug: true } } },
+  }) as Prisma.PrismaPromise<RecentAssignment[]>,
 
-    prisma.practiceSession.findMany({
-      orderBy: [{ startedAt: "desc" }],
-      take: 8,
-      include: {
-        section: { select: { title: true, slug: true } },
-        assignment: { select: { id: true, title: true, slug: true } },
-      },
-    }),
+  prisma.practiceSession.findMany({
+    orderBy: [{ startedAt: "desc" }],
+    take: 8,
+    include: {
+      section: { select: { title: true, slug: true } },
+      assignment: { select: { id: true, title: true, slug: true } },
+    },
+  }),
 
-    // Attempts per day for last 14 days (Postgres)
-    prisma.$queryRaw<
-      Array<{ day: Date; attempts: number; correct: number }>
-    >`
-      SELECT
-        date_trunc('day', "createdAt") AS day,
-        COUNT(*)::int AS attempts,
-        COALESCE(SUM(CASE WHEN "ok" THEN 1 ELSE 0 END), 0)::int AS correct
-      FROM "PracticeAttempt"
-      WHERE "createdAt" >= ${d14}
-      GROUP BY 1
-      ORDER BY 1 ASC
-    `,
-  ]);
+  prisma.$queryRaw<Array<{ day: Date; attempts: number; correct: number }>>`
+    SELECT
+      date_trunc('day', "createdAt") AS day,
+      COUNT(*)::int AS attempts,
+      COALESCE(SUM(CASE WHEN "ok" THEN 1 ELSE 0 END), 0)::int AS correct
+    FROM "PracticeAttempt"
+    WHERE "createdAt" >= ${d14}
+    GROUP BY 1
+    ORDER BY 1 ASC
+  `,
+]);
+
 
   const accuracy7d = attempts7d ? correct7d / attempts7d : NaN;
 
@@ -194,7 +196,7 @@ export default async function AdminDashboardPage() {
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
           <div className="text-sm font-medium text-neutral-900">Recent assignments</div>
           <div className="mt-3 divide-y divide-neutral-200">
-            {recentAssignments.map((a) => (
+            {recentAssignments.map((a: RecentAssignment) => (
               <div key={a.id} className="py-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
