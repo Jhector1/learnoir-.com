@@ -2,9 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-import type { Prisma } from "@prisma/client";
+import type * as PrismaNS from "@prisma/client";
 
-type RecentAssignment = Prisma.AssignmentGetPayload<{
+type RecentAssignment = PrismaNS.Prisma.AssignmentGetPayload<{
   include: { section: { select: { title: true; slug: true } } };
 }>;
 function Card({
@@ -63,7 +63,7 @@ const [
     orderBy: [{ updatedAt: "desc" }],
     take: 6,
     include: { section: { select: { title: true, slug: true } } },
-  }) as Prisma.PrismaPromise<RecentAssignment[]>,
+  }) as PrismaNS.Prisma.PrismaPromise<RecentAssignment[]>,
 
   prisma.practiceSession.findMany({
     orderBy: [{ startedAt: "desc" }],
