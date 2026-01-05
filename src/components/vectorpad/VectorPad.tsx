@@ -89,6 +89,32 @@ export default function VectorPad({
       const create2DSketch = () => (s: p5) => {
         let canvasEl: HTMLCanvasElement | null = null;
 
+
+const drawAxisLabels2D = () => {
+  const o = origin();
+
+  s.push();
+  s.noStroke();
+  s.fill("rgba(255,255,255,0.85)");
+  s.textSize(12);
+  s.textAlign(s.LEFT, s.CENTER);
+
+  // +X label (right end)
+  s.text("x", W - 18, o.y);
+
+  // +Y label (top end) — align center for nicer placement
+  s.textAlign(s.CENTER, s.TOP);
+  s.text("y", o.x, 6);
+
+  // Optional: origin label
+  // s.textAlign(s.LEFT, s.TOP);
+  // s.text("(0,0)", o.x + 6, o.y + 6);
+
+  s.pop();
+};
+
+
+
         const getSize = () => {
           const el = mountRef.current!;
           const r = el.getBoundingClientRect();
@@ -338,6 +364,8 @@ s.setup = () => {
           const bV = st.b;
 
           drawGrid();
+          drawAxisLabels2D();
+
           drawUnitB(bV);
           drawComponents(aV, "rgba(122,162,255,0.55)");
           drawComponents(bV, "rgba(255,107,214,0.55)");
@@ -571,8 +599,14 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
           s.line(-half, 0, 0, half, 0, 0); // X
           s.line(0, -half, 0, 0, half, 0); // Y
           s.line(0, 0, -half, 0, 0, half); // Z
+          
 
           s.pop();
+          // After drawing the axis lines...
+labelAt(half, 0, 0, "x", "rgba(255,255,255,0.85)");
+labelAt(0, half, 0, "y", "rgba(255,255,255,0.85)");
+labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
+
         };
 
         const drawVector = (v: Vec3, col: string) => {

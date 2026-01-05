@@ -289,7 +289,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
     stateRef.current.a = A;
     stateRef.current.b = B;
     setA(A);
-    setB(B);
+    setB(B);dd 
     setStatus({ kind: "idle", msg: "Randomized vectors. Drag tips to explore." });
   }
 

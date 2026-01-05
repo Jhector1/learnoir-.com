@@ -109,3 +109,22 @@ export function fmt2x2(A: number[][]) {
 export function det2(A: number[][]) {
   return A[0][0] * A[1][1] - A[0][1] * A[1][0];
 }
+
+
+
+// utils.ts
+export function fmt2x2Latex(M: number[][]) {
+  return String.raw`\begin{bmatrix}${M[0][0]} & ${M[0][1]}\\ ${M[1][0]} & ${M[1][1]}\end{bmatrix}`;
+}
+
+export function fmtAugmented2x3Latex(a: number, b: number, c: number, d: number, e: number, f: number) {
+  // [ a b | c ; d e | f ]
+  return String.raw`\left[\begin{array}{cc|c}${a} & ${b} & ${c}\\ ${d} & ${e} & ${f}\end{array}\right]`;
+}
+
+export function fmtSystem2Latex(a: number, b: number, c: number, d: number, e: number, f: number) {
+  return String.raw`\begin{cases}
+${a}x + ${b}y = ${c}\\
+${d}x + ${e}y = ${f}
+\end{cases}`;
+}

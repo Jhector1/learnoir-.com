@@ -18,6 +18,8 @@ import type {
   Difficulty,
 } from "@/lib/practice/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import MathMarkdown from "@/components/math/MathMarkdown";
+// import { MathBlock } from "../../components/math/Math";
 
 const SESSION_SIZE = 10;
 
@@ -1091,9 +1093,15 @@ useEffect(() => {
             <div className="text-sm font-black">
               {exercise?.title ?? (busy ? "Loading..." : "—")}
             </div>
-            <div className="mt-1 text-sm text-white/80 whitespace-pre-wrap break-words">
-              {exercise?.prompt ?? ""}
-            </div>
+<div className="mt-1 text-sm text-white/80 break-words">
+  <MathMarkdown
+    content={exercise?.prompt ?? ""}
+    className="prose prose-invert max-w-none
+               prose-p:my-2 prose-strong:text-white
+               prose-code:text-white"
+  />
+</div>
+
           </div>
 
           <div className="p-4">
@@ -1127,9 +1135,9 @@ useEffect(() => {
                       checked={current.single === o.id}
                       onChange={() => updateCurrent({ single: o.id })}
                     />
-                    <span className="text-sm font-extrabold text-white/85 break-words">
-                      {o.text}
-                    </span>
+                  <span className="text-sm font-extrabold text-white/85 break-words">
+  <MathMarkdown content={o.text} />
+</span>
                   </label>
                 ))}
               </div>
@@ -1154,21 +1162,22 @@ useEffect(() => {
                           })
                         }
                       />
-                      <span className="text-sm font-extrabold text-white/85 break-words">
-                        {o.text}
-                      </span>
+                     <span className="text-sm font-extrabold text-white/85 break-words">
+  <MathMarkdown content={o.text}  />
+</span>
                     </label>
                   );
                 })}
               </div>
             ) : exercise.kind === "numeric" ? (
               <div className="grid gap-3">
-                {exercise.hint ? (
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
-                    <span className="font-extrabold text-white/80">Hint:</span>{" "}
-                    {exercise.hint}
-                  </div>
-                ) : null}
+              {exercise.hint ? (
+  <MathMarkdown
+    className="prose prose-sm max-w-none"
+    content={exercise.hint}
+  />
+) : null}
+
 
                 <div className="grid grid-cols-[1fr_140px] items-center gap-2">
                   <div className="text-xs font-extrabold text-white/70">

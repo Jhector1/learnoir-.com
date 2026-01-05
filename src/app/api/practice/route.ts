@@ -3,53 +3,80 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getExerciseWithExpected } from "@/lib/practice/generator";
 import { signPracticeKey } from "@/lib/practice/key";
-import {
-  attachGuestCookie,
-  ensureGuestId,
-  getActor,
-} from "@/lib/practice/actor";
+import { attachGuestCookie, ensureGuestId, getActor } from "@/lib/practice/actor";
 import type { Topic, Difficulty, Exercise } from "@/lib/practice/types";
-
-// ✅ gate for assignment sessions
+import { TOPICS, DIFFICULTIES, asTopicOrAll, asDifficultyOrAll, pick } from "@/lib/practice/catalog";
 import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const TOPICS: Topic[] = [
-  "dot","projection","angle","vectors",
-  "linear_systems","rref","solution_types","parametric",
-  "matrix_ops","matrix_inverse","matrix_properties",
-];
-const DIFFS: Difficulty[] = ["easy", "medium", "hard"];
+// Small helper so you never forget cookies again
+function withGuestCookie<T>(
+  body: T,
+  status: number,
+  setGuestId: string | undefined
+) {
+  const res = NextResponse.json(body as any, { status });
+  return attachGuestCookie(res, setGuestId);
+}
 
-function asTopicOrAll(v: string | null): Topic | "all" {
-  if (!v || v === "all") return "all";
-  return (TOPICS as readonly string[]).includes(v) ? (v as Topic) : "all";
+async function createInstance(args: {
+  sessionId: string | null;
+  exercise: Exercise;
+  expected: any;
+  topic: Topic;
+  difficulty: Difficulty;
+}) {
+  const { sessionId, exercise, expected, topic, difficulty } = args;
+
+  return prisma.practiceQuestionInstance.create({
+    data: {
+      sessionId,
+      kind: (exercise as any).kind,
+      topic: (exercise as any).topic ?? topic,
+      difficulty: (exercise as any).difficulty ?? difficulty,
+      title: String((exercise as any).title ?? "Practice"),
+      prompt: String((exercise as any).prompt ?? ""),
+      publicPayload: exercise as any,
+      secretPayload: {
+        expected,
+        tolerance: (exercise as any).tolerance ?? null,
+      },
+    },
+    select: { id: true, sessionId: true },
+  });
 }
-function asDifficultyOrAll(v: string | null): Difficulty | "all" {
-  if (!v || v === "all") return "all";
-  return (DIFFS as readonly string[]).includes(v) ? (v as Difficulty) : "all";
-}
-function pick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+
+function signKey(args: {
+  instanceId: string;
+  sessionId: string | null;
+  userId: string | null;
+  guestId: string | null;
+}) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  return signPracticeKey({
+    instanceId: args.instanceId,
+    sessionId: args.sessionId,
+    userId: args.userId,
+    guestId: args.guestId,
+    exp: nowSec + 60 * 60,
+  });
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-
     const sessionIdParam = searchParams.get("sessionId");
 
-    // ✅ resolve actor (ties key to user/guest)
     const actor0 = await getActor();
     const ensured = ensureGuestId(actor0);
     const actor = ensured.actor;
     const setGuestId = ensured.setGuestId;
 
-    // ------------------------------------------
-    // ✅ If sessionId present: run as a session
-    // ------------------------------------------
+    // ----------------------------
+    // Session mode
+    // ----------------------------
     if (sessionIdParam) {
       const session = await prisma.practiceSession.findUnique({
         where: { id: sessionIdParam },
@@ -75,191 +102,145 @@ export async function GET(req: Request) {
       });
 
       if (!session) {
-        const res = NextResponse.json(
-          { message: "Session not found." },
-          { status: 404 }
-        );
-        return attachGuestCookie(res, setGuestId);
+        return withGuestCookie({ message: "Session not found." }, 404, setGuestId);
       }
-
       if (session.status !== "active") {
-        const res = NextResponse.json(
-          { message: "Session is not active." },
-          { status: 400 }
-        );
-        return attachGuestCookie(res, setGuestId);
+        return withGuestCookie({ message: "Session is not active." }, 400, setGuestId);
       }
 
-      // ✅ ownership check
+      // ownership check (user OR guest)
       if (
         (session.userId && session.userId !== (actor.userId ?? null)) ||
         (session.guestId && session.guestId !== (actor.guestId ?? null))
       ) {
-        const res = NextResponse.json({ message: "Forbidden." }, { status: 403 });
-        return attachGuestCookie(res, setGuestId);
+        return withGuestCookie({ message: "Forbidden." }, 403, setGuestId);
       }
 
       const now = new Date();
 
-      // ✅ If this is an assignment session => subscription required + lock rules
       let topic: Topic;
       let difficulty: Difficulty;
 
+      // ----------------------------
+      // Assignment session rules
+      // ----------------------------
       if (session.assignmentId) {
-        // hard-block if not entitled
         const gate = await requireEntitledUser();
-        if (!gate.ok) return gate.res;
-
-        // optional safety: ensure session user matches gate user
+        // IMPORTANT: still attach guest cookie if one was created
+        if (!gate.ok) {
+          return attachGuestCookie(gate.res, setGuestId);
+        }
         if (session.userId && session.userId !== gate.userId) {
-          return NextResponse.json({ message: "Forbidden." }, { status: 403 });
+          return withGuestCookie({ message: "Forbidden." }, 403, setGuestId);
         }
 
         const a = session.assignment;
-        if (!a) {
-          return NextResponse.json(
-            { message: "Assignment not found." },
-            { status: 404 }
-          );
-        }
+        if (!a) return withGuestCookie({ message: "Assignment not found." }, 404, setGuestId);
+
         if (a.status !== "published") {
-          return NextResponse.json(
-            { message: "Assignment not available." },
-            { status: 400 }
-          );
+          return withGuestCookie({ message: "Assignment not available." }, 400, setGuestId);
         }
         if (a.availableFrom && now < a.availableFrom) {
-          return NextResponse.json(
-            { message: "Not available yet." },
-            { status: 400 }
-          );
+          return withGuestCookie({ message: "Not available yet." }, 400, setGuestId);
         }
         if (a.dueAt && now > a.dueAt) {
-          return NextResponse.json(
-            { message: "Assignment is past due." },
-            { status: 400 }
-          );
+          return withGuestCookie({ message: "Assignment is past due." }, 400, setGuestId);
         }
 
-        const allowedTopics = (a.topics ?? []) as Topic[];
+        // make sure it’s mutable + typed
+        const allowedTopics = Array.from(a.topics ?? []) as Topic[];
         topic = allowedTopics.length ? pick(allowedTopics) : pick(TOPICS);
-        difficulty = a.difficulty as Difficulty;
+
+        // if DB can ever be null, fallback
+        difficulty = (a.difficulty as Difficulty) ?? pick(DIFFICULTIES);
       } else {
-        // normal session (not assignment) -> allow query params or random
+        // ----------------------------
+        // Normal session rules
+        // ----------------------------
         const topicOrAll = asTopicOrAll(searchParams.get("topic"));
         const difficultyOrAll = asDifficultyOrAll(searchParams.get("difficulty"));
+
         topic = topicOrAll === "all" ? pick(TOPICS) : topicOrAll;
-        difficulty = difficultyOrAll === "all" ? pick(DIFFS) : difficultyOrAll;
+        difficulty = difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
       }
 
       const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
 
       if (!exercise || typeof (exercise as any).kind !== "string") {
-        const res = NextResponse.json(
+        return withGuestCookie(
           { message: "Generator returned invalid exercise." },
-          { status: 500 }
+          500,
+          setGuestId
         );
-        return attachGuestCookie(res, setGuestId);
       }
 
-      // ✅ persist instance with sessionId
-      const instance = await prisma.practiceQuestionInstance.create({
-        data: {
-          sessionId: session.id,
-          kind: (exercise as any).kind,
-          topic: (exercise as any).topic ?? topic,
-          difficulty: (exercise as any).difficulty ?? difficulty,
-          title: String((exercise as any).title ?? "Practice"),
-          prompt: String((exercise as any).prompt ?? ""),
-          publicPayload: exercise as any,
-          secretPayload: {
-            expected,
-            tolerance: (exercise as any).tolerance ?? null,
-          },
-        },
-        select: { id: true, sessionId: true },
+      const instance = await createInstance({
+        sessionId: session.id,
+        exercise: exercise as Exercise,
+        expected,
+        topic,
+        difficulty,
       });
 
-      // optional: track last instance on session
-      await prisma.practiceSession.update({
-        where: { id: session.id },
-        data: { lastInstanceId: instance.id },
-      }).catch(() => {});
+      // optional: track last instance
+      prisma.practiceSession
+        .update({ where: { id: session.id }, data: { lastInstanceId: instance.id } })
+        .catch(() => {});
 
-      const nowSec = Math.floor(Date.now() / 1000);
-      const key = signPracticeKey({
+      const key = signKey({
         instanceId: instance.id,
         sessionId: instance.sessionId ?? null,
         userId: actor.userId ?? null,
         guestId: actor.guestId ?? null,
-        exp: nowSec + 60 * 60,
       });
 
-      const res = NextResponse.json(
+      return withGuestCookie(
         {
           exercise: exercise as Exercise,
           key,
           sessionId: session.id,
-          // extra metadata (safe; front-end can ignore)
           meta: {
             mode: session.assignmentId ? "assignment" : "session",
             targetCount: session.targetCount,
           },
         },
-        { status: 200 }
+        200,
+        setGuestId
       );
-
-      return attachGuestCookie(res, setGuestId);
     }
 
-    // ------------------------------------------
-    // ✅ No sessionId: legacy “stateless” practice
-    // ------------------------------------------
+    // ----------------------------
+    // Stateless mode
+    // ----------------------------
     const topicOrAll = asTopicOrAll(searchParams.get("topic"));
     const difficultyOrAll = asDifficultyOrAll(searchParams.get("difficulty"));
 
     const topic: Topic = topicOrAll === "all" ? pick(TOPICS) : topicOrAll;
     const difficulty: Difficulty =
-      difficultyOrAll === "all" ? pick(DIFFS) : difficultyOrAll;
+      difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
 
     const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
 
     if (!exercise || typeof (exercise as any).kind !== "string") {
-      const res = NextResponse.json(
-        { message: "Generator returned invalid exercise." },
-        { status: 500 }
-      );
-      return attachGuestCookie(res, setGuestId);
+      return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
     }
 
-    const instance = await prisma.practiceQuestionInstance.create({
-      data: {
-        sessionId: null,
-        kind: (exercise as any).kind,
-        topic: (exercise as any).topic ?? topic,
-        difficulty: (exercise as any).difficulty ?? difficulty,
-        title: String((exercise as any).title ?? "Practice"),
-        prompt: String((exercise as any).prompt ?? ""),
-        publicPayload: exercise as any,
-        secretPayload: {
-          expected,
-          tolerance: (exercise as any).tolerance ?? null,
-        },
-      },
-      select: { id: true, sessionId: true },
+    const instance = await createInstance({
+      sessionId: null,
+      exercise: exercise as Exercise,
+      expected,
+      topic,
+      difficulty,
     });
 
-    const now = Math.floor(Date.now() / 1000);
-    const key = signPracticeKey({
+    const key = signKey({
       instanceId: instance.id,
       sessionId: null,
       userId: actor.userId ?? null,
       guestId: actor.guestId ?? null,
-      exp: now + 60 * 60,
     });
 
-    const res = NextResponse.json({ exercise: exercise as Exercise, key }, { status: 200 });
-    return attachGuestCookie(res, setGuestId);
+    return withGuestCookie({ exercise: exercise as Exercise, key }, 200, setGuestId);
   } catch (err: any) {
     console.error("[/api/practice] error:", err);
     return NextResponse.json(
