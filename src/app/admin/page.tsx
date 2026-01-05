@@ -2,11 +2,26 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
-import type * as PrismaNS from "@prisma/client";
 
-type RecentAssignment = PrismaNS.Prisma.AssignmentGetPayload<{
-  include: { section: { select: { title: true; slug: true } } };
-}>;
+// ---- Typed query promises (avoid Prisma namespace types entirely) ----
+const recentAssignmentsPromise = prisma.assignment.findMany({
+  orderBy: [{ updatedAt: "desc" }],
+  take: 6,
+  include: { section: { select: { title: true, slug: true } } },
+});
+type RecentAssignment = Awaited<typeof recentAssignmentsPromise>[number];
+
+const recentSessionsPromise = prisma.practiceSession.findMany({
+  orderBy: [{ startedAt: "desc" }],
+  take: 8,
+  include: {
+    section: { select: { title: true, slug: true } },
+    assignment: { select: { id: true, title: true, slug: true } },
+  },
+});
+type RecentSession = Awaited<typeof recentSessionsPromise>[number];
+
+// ---- UI helpers ----
 function Card({
   title,
   value,
@@ -22,9 +37,7 @@ function Card({
       <div className="mt-2 text-2xl font-semibold tracking-tight text-neutral-900">
         {value}
       </div>
-      {hint ? (
-        <div className="mt-1 text-xs text-neutral-500">{hint}</div>
-      ) : null}
+      {hint ? <div className="mt-1 text-xs text-neutral-500">{hint}</div> : null}
     </div>
   );
 }
@@ -39,53 +52,41 @@ export default async function AdminDashboardPage() {
   const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const d14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-const [
-  sectionsCount,
-  assignmentsCount,
-  publishedAssignmentsCount,
-  sessions7d,
-  attempts7d,
-  correct7d,
-  recentAssignments,
-  recentSessions,
-  seriesRows,
-] = await Promise.all([
-  prisma.practiceSection.count(),
-  prisma.assignment.count(),
-  prisma.assignment.count({ where: { status: "published" } }),
+  const [
+    sectionsCount,
+    assignmentsCount,
+    publishedAssignmentsCount,
+    sessions7d,
+    attempts7d,
+    correct7d,
+    recentAssignments,
+    recentSessions,
+    seriesRows,
+  ] = await Promise.all([
+    prisma.practiceSection.count(),
+    prisma.assignment.count(),
+    prisma.assignment.count({ where: { status: "published" } }),
 
-  prisma.practiceSession.count({ where: { startedAt: { gte: d7 } } }),
+    prisma.practiceSession.count({ where: { startedAt: { gte: d7 } } }),
 
-  prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 } } }),
-  prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 }, ok: true } }),
+    prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 } } }),
+    prisma.practiceAttempt.count({ where: { createdAt: { gte: d7 }, ok: true } }),
 
-  prisma.assignment.findMany({
-    orderBy: [{ updatedAt: "desc" }],
-    take: 6,
-    include: { section: { select: { title: true, slug: true } } },
-  }) as PrismaNS.Prisma.PrismaPromise<RecentAssignment[]>,
+    recentAssignmentsPromise,
+    recentSessionsPromise,
 
-  prisma.practiceSession.findMany({
-    orderBy: [{ startedAt: "desc" }],
-    take: 8,
-    include: {
-      section: { select: { title: true, slug: true } },
-      assignment: { select: { id: true, title: true, slug: true } },
-    },
-  }),
-
-  prisma.$queryRaw<Array<{ day: Date; attempts: number; correct: number }>>`
-    SELECT
-      date_trunc('day', "createdAt") AS day,
-      COUNT(*)::int AS attempts,
-      COALESCE(SUM(CASE WHEN "ok" THEN 1 ELSE 0 END), 0)::int AS correct
-    FROM "PracticeAttempt"
-    WHERE "createdAt" >= ${d14}
-    GROUP BY 1
-    ORDER BY 1 ASC
-  `,
-]);
-
+    // Attempts per day for last 14 days (Postgres)
+    prisma.$queryRaw<Array<{ day: Date; attempts: number; correct: number }>>`
+      SELECT
+        date_trunc('day', "createdAt") AS day,
+        COUNT(*)::int AS attempts,
+        COALESCE(SUM(CASE WHEN "ok" THEN 1 ELSE 0 END), 0)::int AS correct
+      FROM "PracticeAttempt"
+      WHERE "createdAt" >= ${d14}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `,
+  ]);
 
   const accuracy7d = attempts7d ? correct7d / attempts7d : NaN;
 
@@ -114,9 +115,7 @@ const [
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Quick stats + recent activity.
-          </p>
+          <p className="mt-1 text-sm text-neutral-500">Quick stats + recent activity.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -157,9 +156,7 @@ const [
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-medium text-neutral-900">Last 14 days</div>
-              <div className="mt-1 text-xs text-neutral-500">
-                Attempts + accuracy
-              </div>
+              <div className="mt-1 text-xs text-neutral-500">Attempts + accuracy</div>
             </div>
           </div>
 
@@ -225,7 +222,7 @@ const [
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
           <div className="text-sm font-medium text-neutral-900">Recent sessions</div>
           <div className="mt-3 divide-y divide-neutral-200">
-            {recentSessions.map((s) => (
+            {recentSessions.map((s: RecentSession) => (
               <div key={s.id} className="py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
