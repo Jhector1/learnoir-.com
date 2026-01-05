@@ -9,7 +9,7 @@ export async function GET() {
   const actor = await getActor(); // ok if empty
   const now = new Date();
 
-  const assignments = await prisma.assignment.findMany({
+  const assignmentsPromise = prisma.assignment.findMany({
     where: {
       status: "published",
       AND: [
@@ -33,22 +33,27 @@ export async function GET() {
     },
   });
 
+  type AssignmentRow = Awaited<typeof assignmentsPromise>[number];
+  const assignments = await assignmentsPromise;
+
   // optional: attempts remaining (only if actor exists)
   let counts = new Map<string, number>();
+
   if (actor.userId || actor.guestId) {
     const rows = await prisma.practiceSession.groupBy({
       by: ["assignmentId"],
       where: {
-        assignmentId: { in: assignments.map((a) => a.id) },
+        assignmentId: { in: assignments.map((a: AssignmentRow) => a.id) },
         ...(actor.userId ? { userId: actor.userId } : { guestId: actor.guestId }),
       },
       _count: { _all: true },
     });
-    counts = new Map(rows.map((r) => [r.assignmentId!, r._count._all]));
+
+    counts = new Map(rows.map((r: any) => [r.assignmentId!, r._count._all]));
   }
 
   return NextResponse.json({
-    assignments: assignments.map((a) => {
+    assignments: assignments.map((a: AssignmentRow) => {
       const used = counts.get(a.id) ?? 0;
       return {
         ...a,
