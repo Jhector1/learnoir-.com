@@ -7,17 +7,30 @@ import type { Mode, Vec3 } from "@/lib/math/vec3";
 import {
   COLORS,
   angleBetween,
-  mag,
   projOfAonB,
   radToDeg,
   safeUnit,
   scalarProjOfAonB,
-  sub,
   mul,
 } from "@/lib/math/vec3";
 import type { VectorPadState } from "./types";
 
 type Handles = { a?: boolean; b?: boolean };
+
+type Overlay2DArgs = {
+  s: p5;
+  W: number;
+  H: number;
+  origin: () => { x: number; y: number };
+  worldToScreen2: (v: Vec3) => { x: number; y: number };
+};
+
+type Overlay3DArgs = {
+  s: p5;
+  W: number;
+  H: number;
+  labelAt: (x: number, y: number, z: number, text: string, col: string) => void;
+};
 
 type Props = {
   mode: Mode;
@@ -27,9 +40,15 @@ type Props = {
 
   onPreview?: (a: Vec3, b: Vec3) => void;
   onCommit?: (a: Vec3, b: Vec3) => void;
-  previewThrottleMs?: number;
 
+  // ✅ sync wheel zoom back to React slider
+  onScaleChange?: (nextScale: number) => void;
+
+  previewThrottleMs?: number;
   className?: string;
+
+  overlay2D?: (args: Overlay2DArgs) => void;
+  overlay3D?: (args: Overlay3DArgs) => void;
 };
 
 export default function VectorPad({
@@ -39,8 +58,11 @@ export default function VectorPad({
   handles,
   onPreview,
   onCommit,
-  previewThrottleMs = 120,
+  onScaleChange,
+  previewThrottleMs = 1200,
   className,
+  overlay2D,
+  overlay3D,
 }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const p5Ref = useRef<any>(null);
@@ -72,6 +94,17 @@ export default function VectorPad({
     onCommit?.(nextA, nextB);
   };
 
+  const overlay2DRef = useRef<Props["overlay2D"]>(overlay2D);
+  const overlay3DRef = useRef<Props["overlay3D"]>(overlay3D);
+
+  useEffect(() => {
+    overlay2DRef.current = overlay2D;
+  }, [overlay2D]);
+
+  useEffect(() => {
+    overlay3DRef.current = overlay3D;
+  }, [overlay3D]);
+
   useEffect(() => {
     if (!mountRef.current) return;
     let cancelled = false;
@@ -82,38 +115,28 @@ export default function VectorPad({
       if (cancelled) return;
 
       if (p5Ref.current) {
-        p5Ref.current.remove();
+        try {
+          p5Ref.current.remove(); // ✅ will now properly remove canvas
+        } catch {}
         p5Ref.current = null;
       }
 
+      const clamp = (v: number, lo: number, hi: number) =>
+        Math.max(lo, Math.min(hi, v));
+
       const create2DSketch = () => (s: p5) => {
         let canvasEl: HTMLCanvasElement | null = null;
+        const isMouseOverCanvas = () =>
+          s.mouseX >= 0 && s.mouseX <= W && s.mouseY >= 0 && s.mouseY <= H;
+        // wheel blocker that we can remove (no memory leaks)
+        let wheelBlocker: ((e: WheelEvent) => void) | null = null;
 
-
-const drawAxisLabels2D = () => {
-  const o = origin();
-
-  s.push();
-  s.noStroke();
-  s.fill("rgba(255,255,255,0.85)");
-  s.textSize(12);
-  s.textAlign(s.LEFT, s.CENTER);
-
-  // +X label (right end)
-  s.text("x", W - 18, o.y);
-
-  // +Y label (top end) — align center for nicer placement
-  s.textAlign(s.CENTER, s.TOP);
-  s.text("y", o.x, 6);
-
-  // Optional: origin label
-  // s.textAlign(s.LEFT, s.TOP);
-  // s.text("(0,0)", o.x + 6, o.y + 6);
-
-  s.pop();
-};
-
-
+        const applyZoom = (factor: number) => {
+          const st = stateRef.current;
+          const next = clamp(st.scale * factor, 20, 280);
+          st.scale = next;
+          onScaleChange?.(next); // ✅ sync React slider
+        };
 
         const getSize = () => {
           const el = mountRef.current!;
@@ -143,6 +166,38 @@ const drawAxisLabels2D = () => {
           };
         };
 
+        // ✅ nice auto grid step (2D)
+        const niceStep = (raw: number) => {
+          if (!Number.isFinite(raw) || raw <= 0) return 1;
+          const pow10 = Math.pow(10, Math.floor(Math.log10(raw)));
+          const x = raw / pow10;
+          const snapped = x <= 1 ? 1 : x <= 2 ? 2 : x <= 5 ? 5 : 10;
+          return snapped * pow10;
+        };
+
+        const getAutoGridStep2D = () => {
+          const targetPx = 48;
+          const scale = Math.max(10, stateRef.current.scale);
+          const rawWorldStep = targetPx / scale;
+          return niceStep(rawWorldStep);
+        };
+
+        const drawAxisLabels2D = () => {
+          const o = origin();
+          s.push();
+          s.noStroke();
+          s.fill("rgba(255,255,255,0.85)");
+          s.textSize(12);
+
+          s.textAlign(s.LEFT, s.CENTER);
+          s.text("x", W - 18, o.y);
+
+          s.textAlign(s.CENTER, s.TOP);
+          s.text("y", o.x, 6);
+
+          s.pop();
+        };
+
         type DragTarget = "a" | "b" | null;
         let dragging: DragTarget = null;
 
@@ -155,7 +210,12 @@ const drawAxisLabels2D = () => {
         const maybeSnap2 = (v: Vec3, shiftDown: boolean) => {
           if (!stateRef.current.snapToGrid) return v;
           if (shiftDown) return v;
-          const step = Math.max(0.1, stateRef.current.gridStep);
+
+          const st = stateRef.current;
+          const step = st.autoGridStep
+            ? getAutoGridStep2D()
+            : Math.max(0.1, st.gridStep);
+
           return {
             x: Math.round(v.x / step) * step,
             y: Math.round(v.y / step) * step,
@@ -197,27 +257,40 @@ const drawAxisLabels2D = () => {
         };
 
         const drawGrid = () => {
-          if (!stateRef.current.showGrid) return;
-          s.push();
-          const step = Math.max(0.25, stateRef.current.gridStep);
-          const pxStep = step * stateRef.current.scale;
+          const st = stateRef.current;
+          if (!st.showGrid) return;
+
+          const stepWorld = st.autoGridStep
+            ? getAutoGridStep2D()
+            : Math.max(0.25, st.gridStep);
+          const pxStep = stepWorld * st.scale;
+          if (!Number.isFinite(pxStep) || pxStep <= 1) return;
+
           const o = origin();
-
-          s.stroke(COLORS.grid);
-          s.strokeWeight(1);
-
           const maxX = Math.ceil(W / pxStep) + 2;
           const maxY = Math.ceil(H / pxStep) + 2;
 
-          for (let i = -maxX; i <= maxX; i++)
-            s.line(o.x + i * pxStep, 0, o.x + i * pxStep, H);
-          for (let j = -maxY; j <= maxY; j++)
-            s.line(0, o.y + j * pxStep, W, o.y + j * pxStep);
+          s.push();
+          for (let i = -maxX; i <= maxX; i++) {
+            const x = o.x + i * pxStep;
+            const isMajor = i % 5 === 0;
+            s.stroke(isMajor ? "rgba(255,255,255,0.18)" : COLORS.grid);
+            s.strokeWeight(isMajor ? 1.5 : 1);
+            s.line(x, 0, x, H);
+          }
+          for (let j = -maxY; j <= maxY; j++) {
+            const y = o.y + j * pxStep;
+            const isMajor = j % 5 === 0;
+            s.stroke(isMajor ? "rgba(255,255,255,0.18)" : COLORS.grid);
+            s.strokeWeight(isMajor ? 1.5 : 1);
+            s.line(0, y, W, y);
+          }
 
           s.stroke(COLORS.axis);
           s.strokeWeight(2);
           s.line(0, o.y, W, o.y);
           s.line(o.x, 0, o.x, H);
+
           s.pop();
         };
 
@@ -328,26 +401,47 @@ const drawAxisLabels2D = () => {
           s.pop();
         };
 
-s.setup = () => {
-  const { w, h } = getSize();
-  W = w;
-  H = h;
+        s.setup = () => {
+          const { w, h } = getSize();
+          W = w;
+          H = h;
 
-  s.pixelDensity(1);
+          s.pixelDensity(1);
 
-  const renderer = s.createCanvas(W, H); // ✅ only once
-  canvasEl = renderer.elt as HTMLCanvasElement;
+          const renderer = s.createCanvas(W, H);
+          canvasEl = renderer.elt as HTMLCanvasElement;
 
-  canvasEl.style.touchAction = "none";
-  canvasEl.tabIndex = 0;
-  canvasEl.style.outline = "none";
-  canvasEl.focus?.();
+          // block page scroll while over canvas (but removable!)
+          wheelBlocker = (e: WheelEvent) => e.preventDefault();
+          canvasEl.addEventListener("wheel", wheelBlocker, { passive: false });
 
-  s.textFont(
-    "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
-  );
-};
+          canvasEl.style.touchAction = "none";
+          canvasEl.tabIndex = 0;
+          canvasEl.style.outline = "none";
+          canvasEl.focus?.();
 
+          s.textFont(
+            "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+          );
+
+          // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
+          const originalRemove = (s as any).remove?.bind(s);
+          (s as any).remove = () => {
+            if (canvasEl && wheelBlocker) {
+              canvasEl.removeEventListener("wheel", wheelBlocker);
+            }
+            originalRemove?.(); // ✅ actually removes the canvas + sketch
+          };
+        };
+
+        s.mouseWheel = (evt: any) => {
+          // ✅ only zoom when cursor is over the canvas
+          if (!isMouseOverCanvas()) return true;
+          evt?.preventDefault?.();
+          const delta = evt?.deltaY ?? 0;
+          applyZoom(delta > 0 ? 0.92 : 1.08);
+          return false;
+        };
 
         s.windowResized = () => {
           const { w, h } = getSize();
@@ -366,6 +460,8 @@ s.setup = () => {
           drawGrid();
           drawAxisLabels2D();
 
+overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
+
           drawUnitB(bV);
           drawComponents(aV, "rgba(122,162,255,0.55)");
           drawComponents(bV, "rgba(255,107,214,0.55)");
@@ -374,19 +470,22 @@ s.setup = () => {
 
           drawArrow(o, worldToScreen2(aV), COLORS.a, 4);
           drawArrow(o, worldToScreen2(bV), COLORS.b, 4);
-if (handlesMemo.a) drawHandle(worldToScreen2(aV), COLORS.a);
-else drawHandle(worldToScreen2(aV), "rgba(122,162,255,0.25)");
 
-if (handlesMemo.b) drawHandle(worldToScreen2(bV), COLORS.b);
-else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
-
+          drawHandle(
+            worldToScreen2(aV),
+            handlesMemo.a ? COLORS.a : "rgba(122,162,255,0.25)"
+          );
+          drawHandle(
+            worldToScreen2(bV),
+            handlesMemo.b ? COLORS.b : "rgba(255,107,214,0.25)"
+          );
 
           s.push();
           s.noStroke();
           s.fill("rgba(255,255,255,0.75)");
           s.textSize(12);
           s.textAlign(s.LEFT, s.TOP);
-          s.text("2D: drag tips • Shift = no-snap", 12, 12);
+          s.text("2D: drag tips • wheel = zoom • Shift = no-snap", 12, 12);
           s.pop();
         };
 
@@ -400,7 +499,8 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
 
           const hitA = handlesMemo.a && dist2(mx, my, aTip.x, aTip.y) <= r2;
           const hitB = handlesMemo.b && dist2(mx, my, bTip.x, bTip.y) <= r2;
-  canvasEl?.focus();
+
+          canvasEl?.focus();
 
           if (hitA && hitB) {
             const da = dist2(mx, my, aTip.x, aTip.y);
@@ -416,10 +516,7 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
           const st = stateRef.current;
 
           const w = screenToWorld2(s.mouseX, s.mouseY);
-
-          // ✅ reliable Shift detection
           const shiftDown = !!evt?.shiftKey || s.keyIsDown(16);
-
           const snapped = maybeSnap2(w, shiftDown);
 
           if (dragging === "a") emitPreview(snapped, st.b);
@@ -435,6 +532,14 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
 
       const create3DSketch = () => (s: p5) => {
         let canvasEl: HTMLCanvasElement | null = null;
+        let wheelBlocker: ((e: WheelEvent) => void) | null = null;
+
+        const applyZoom = (factor: number) => {
+          const st = stateRef.current;
+          const next = clamp(st.scale * factor, 20, 280);
+          st.scale = next;
+          onScaleChange?.(next);
+        };
 
         const getSize = () => {
           const el = mountRef.current!;
@@ -451,10 +556,30 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
 
         const dragSpeed = () => 1 / Math.max(20, stateRef.current.scale);
 
+        // ✅ nice auto grid step (3D)
+        const niceStep = (raw: number) => {
+          if (!Number.isFinite(raw) || raw <= 0) return 1;
+          const pow10 = Math.pow(10, Math.floor(Math.log10(raw)));
+          const x = raw / pow10;
+          const snapped = x <= 1 ? 1 : x <= 2 ? 2 : x <= 5 ? 5 : 10;
+          return snapped * pow10;
+        };
+
+        const getAutoGridStep3D = () => {
+          const targetPx = 48;
+          const sc = Math.max(10, stateRef.current.scale);
+          return niceStep(targetPx / sc);
+        };
+
         const maybeSnap3 = (v: Vec3, shiftDown: boolean) => {
           if (!stateRef.current.snapToGrid) return v;
           if (shiftDown) return v;
-          const step = Math.max(0.1, stateRef.current.gridStep);
+
+          const st = stateRef.current;
+          const step = st.autoGridStep
+            ? getAutoGridStep3D()
+            : Math.max(0.1, st.gridStep);
+
           return {
             x: Math.round(v.x / step) * step,
             y: Math.round(v.y / step) * step,
@@ -462,9 +587,8 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
           };
         };
 
-        // ---- ✅ robust 3D->2D for picking (fixes "spheres not draggable") ----
+        // ---- robust 3D->2D for picking ----
         const normalizeToTopLeft = (pt: { x: number; y: number }) => {
-          // If it looks like a centered coordinate, convert to top-left.
           if (
             pt.x >= -W / 2 &&
             pt.x <= W / 2 &&
@@ -491,7 +615,6 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
         const worldToScreen = (x: number, y: number, z: number) => {
           const anyS = s as any;
 
-          // Newer p5 builds
           if (typeof anyS.worldToScreen === "function") {
             try {
               const v = anyS.worldToScreen(x, y, z);
@@ -502,7 +625,6 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
             } catch {}
           }
 
-          // Older p5 builds
           if (typeof anyS.screenPosition === "function") {
             try {
               const v = anyS.screenPosition(x, y, z);
@@ -513,7 +635,6 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
             } catch {}
           }
 
-          // Fallback: manual projection using renderer matrices (best effort)
           const r = anyS._renderer;
           const mv = getMat4(r?.uMVMatrix);
           const pr = getMat4(r?.uPMatrix);
@@ -579,34 +700,36 @@ else drawHandle(worldToScreen2(bV), "rgba(255,107,214,0.25)");
         };
 
         const drawAxis = () => {
-          if (!stateRef.current.showGrid) return;
+          const st = stateRef.current;
+          if (!st.showGrid) return;
+
+          const step = st.autoGridStep
+            ? getAutoGridStep3D()
+            : Math.max(0.25, st.gridStep);
+          const worldStep = step * st.scale;
+          const half = 10 * worldStep;
 
           s.push();
           s.strokeWeight(1);
 
+          // grid in XY plane
           s.stroke(COLORS.grid);
-          const step = Math.max(0.25, stateRef.current.gridStep);
-          const worldStep = step * stateRef.current.scale;
-          const half = 10 * worldStep;
-
           for (let x = -half; x <= half; x += worldStep)
             s.line(x, -half, 0, x, half, 0);
           for (let y = -half; y <= half; y += worldStep)
             s.line(-half, y, 0, half, y, 0);
 
+          // axes
           s.stroke(COLORS.axis);
           s.strokeWeight(2);
           s.line(-half, 0, 0, half, 0, 0); // X
           s.line(0, -half, 0, 0, half, 0); // Y
           s.line(0, 0, -half, 0, 0, half); // Z
-          
-
           s.pop();
-          // After drawing the axis lines...
-labelAt(half, 0, 0, "x", "rgba(255,255,255,0.85)");
-labelAt(0, half, 0, "y", "rgba(255,255,255,0.85)");
-labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
 
+          labelAt(half, 0, 0, "x", "rgba(255,255,255,0.85)");
+          labelAt(0, half, 0, "y", "rgba(255,255,255,0.85)");
+          labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
         };
 
         const drawVector = (v: Vec3, col: string) => {
@@ -706,22 +829,46 @@ labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
           );
         };
 
-      s.setup = () => {
-  const { w, h } = getSize();
-  W = w;
-  H = h;
+        s.setup = () => {
+          const { w, h } = getSize();
+          W = w;
+          H = h;
 
-  s.pixelDensity(1);
+          s.pixelDensity(1);
 
-  const renderer = s.createCanvas(W, H, (s as any).WEBGL); // ✅ WEBGL REQUIRED
-  canvasEl = renderer.elt as HTMLCanvasElement;
+          const renderer = s.createCanvas(W, H, (s as any).WEBGL);
+          canvasEl = renderer.elt as HTMLCanvasElement;
 
-  canvasEl.style.touchAction = "none";
-  canvasEl.tabIndex = 0;
-  canvasEl.style.outline = "none";
-  canvasEl.focus?.();
-};
+          wheelBlocker = (e: WheelEvent) => e.preventDefault();
+          canvasEl.addEventListener("wheel", wheelBlocker, { passive: false });
 
+          canvasEl.style.touchAction = "none";
+          canvasEl.tabIndex = 0;
+          canvasEl.style.outline = "none";
+          canvasEl.focus?.();
+
+          // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
+          const originalRemove = (s as any).remove?.bind(s);
+          (s as any).remove = () => {
+            if (canvasEl && wheelBlocker) {
+              canvasEl.removeEventListener("wheel", wheelBlocker);
+            }
+            originalRemove?.(); // ✅ actually removes the canvas + sketch
+          };
+        };
+
+        const isMouseOverCanvas = () =>
+          s.mouseX >= 0 && s.mouseX <= W && s.mouseY >= 0 && s.mouseY <= H;
+
+        s.mouseWheel = (evt: any) => {
+          // ✅ only zoom when cursor is over the canvas
+          if (!isMouseOverCanvas()) return true;
+
+          evt?.preventDefault?.();
+          const delta = evt?.deltaY ?? 0;
+          applyZoom(delta > 0 ? 0.92 : 1.08);
+          return false;
+        };
 
         s.windowResized = () => {
           const { w, h } = getSize();
@@ -747,6 +894,9 @@ labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
           s.directionalLight(255, 255, 255, 0.2, 0.4, -1);
 
           drawAxis();
+       overlay3DRef.current?.({ s, W, H, labelAt });
+
+
           drawVector(A, COLORS.a);
           drawVector(B, COLORS.b);
           drawUnitB3D(B);
@@ -769,7 +919,7 @@ labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
           s.textSize(12);
           s.textAlign(s.LEFT, s.TOP);
           s.text(
-            "3D: orbit drag • pick sphere to move • hold Z (or Depth mode) while dragging to change depth • Shift = no-snap",
+            "3D: orbit drag • pick sphere to move • wheel = zoom • hold Z (or Depth mode) while dragging to change depth • Shift = no-snap",
             12,
             12
           );
@@ -784,14 +934,13 @@ labelAt(0, 0, half, "z", "rgba(255,255,255,0.85)");
         };
 
         s.mousePressed = () => {
-canvasEl?.focus();
+          canvasEl?.focus();
           const st = stateRef.current;
           const sc = st.scale;
 
           const aS = worldToScreen(st.a.x * sc, -st.a.y * sc, st.a.z * sc);
           const bS = worldToScreen(st.b.x * sc, -st.b.y * sc, st.b.z * sc);
 
-          // normalize mouse to top-left if needed
           const mTL = normalizeToTopLeft({ x: s.mouseX, y: s.mouseY });
           const mx = mTL.x;
           const my = mTL.y;
@@ -812,7 +961,6 @@ canvasEl?.focus();
 
         s.mouseDragged = (evt: any) => {
           if (!dragging) return;
-
           const st = stateRef.current;
 
           if (!lastMouse) lastMouse = { x: s.mouseX, y: s.mouseY };
@@ -820,9 +968,11 @@ canvasEl?.focus();
           const dy = s.mouseY - lastMouse.y;
           lastMouse = { x: s.mouseX, y: s.mouseY };
 
-          // ✅ reliable Shift detection
           const shiftDown =
-            !!evt?.shiftKey || (s as any).keyIsDown?.(16) || s.keyIsDown(16);
+            !!evt?.shiftKey ||
+            (s as any).keyIsDown?.(16) ||
+            (s as any).keyIsDown?.(16) ||
+            s.keyIsDown(16);
 
           const zDown =
             st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
@@ -861,11 +1011,13 @@ canvasEl?.focus();
     return () => {
       cancelled = true;
       if (p5Ref.current) {
-        p5Ref.current.remove();
+        try {
+          p5Ref.current.remove(); // ✅ now removes old canvas correctly
+        } catch {}
         p5Ref.current = null;
       }
     };
-  }, [mode, previewThrottleMs, handlesMemo.a, handlesMemo.b]);
+  }, [mode, previewThrottleMs, handlesMemo.a, handlesMemo.b, onScaleChange]);
 
   return (
     <div ref={mountRef} className={className ?? "relative h-full w-full"} />

@@ -4,19 +4,32 @@ import { prisma } from "@/lib/prisma";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const sections = await prisma.practiceSection.findMany({
-    orderBy: [{ module: { order: "asc" } }, { order: "asc" }],
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      description: true,
-      order: true,
-      topics: true,
-        meta: true, // ✅ add
-      module: { select: { slug: true, title: true, order: true, weekStart: true, weekEnd: true } },
-    },
-  });
+  try {
+    const sections = await prisma.practiceSection.findMany({
+      orderBy: [{ module: { order: "asc" } }, { order: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        order: true,
+        topics: true,
+        meta: true,
+        module: {
+          select: { slug: true, title: true, order: true, weekStart: true, weekEnd: true },
+        },
+      },
+    });
 
-  return NextResponse.json({ sections });
+    return NextResponse.json({ sections }, { status: 200 });
+  } catch (err: any) {
+    console.error("GET /api/practice/sections failed:", err);
+    return NextResponse.json(
+      {
+        sections: [],
+        error: err?.message ?? "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
 }

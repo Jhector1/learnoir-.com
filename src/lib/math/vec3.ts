@@ -65,3 +65,17 @@ export function scalarProjOfAonB(a: Vec3, b: Vec3) {
   if (!ub) return NaN;
   return dot(a, ub);
 }
+
+
+
+export function cross(a: Vec3, b: Vec3): Vec3 {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+export function areCollinear2D(a: Vec3, b: Vec3, eps = 1e-6) {
+  return Math.abs(a.x * b.y - a.y * b.x) < eps;
+}

@@ -11,6 +11,9 @@ export type Topic =
   | "rref"
   | "solution_types"
   | "parametric"
+  | "vectors_part2"
+  | "vectors_part1"
+
   // Module 2
   | "matrix_ops"
   | "matrix_inverse"

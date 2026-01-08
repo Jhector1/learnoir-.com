@@ -14,6 +14,8 @@ export const ALL_TOPICS: Topic[] = [
   "parametric",
   "matrix_ops",
   "matrix_inverse",
+  "vectors_part2",
+   "vectors_part1",
   "matrix_properties",
 ];
 

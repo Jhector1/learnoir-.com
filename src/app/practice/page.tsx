@@ -337,6 +337,10 @@ export default function PracticePage() {
       topicParam === "projection" ||
       topicParam === "angle" ||
       topicParam === "vectors"
+       ||
+      topicParam === "vectors_part2"
+       ||
+      topicParam === "vectors_part1"
         ? (topicParam as any)
         : "all";
 

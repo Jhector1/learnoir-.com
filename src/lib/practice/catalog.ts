@@ -13,6 +13,8 @@ export const TOPICS = [
   "matrix_ops",
   "matrix_inverse",
   "matrix_properties",
+  "vectors_part2",
+  "vectors_part1",
 ] as const satisfies readonly Topic[];
 
 export const DIFFICULTIES = ["easy", "medium", "hard"] as const satisfies readonly Difficulty[];

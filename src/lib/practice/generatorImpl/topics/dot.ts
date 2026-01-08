@@ -1,8 +1,12 @@
-// src/lib/practice/generator/topics/dot.ts
 import type { Difficulty, Exercise } from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, dot as dot3, roundTo, toleranceFor } from "../utils";
 import { RNG } from "../rng";
+
+// ---------- LaTeX helpers ----------
+function fmtVec2Latex(x: number, y: number) {
+  return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
+}
 
 export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
   const archetype = rng.weighted([
@@ -16,17 +20,25 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
   const B = nonZeroVec(rng, diff);
   const target = dot3(A, B);
 
+  // -------------------- dot_drag --------------------
   if (archetype === "dot_drag") {
+    const prompt = String.raw`
+Drag \(a\) so that the dot product matches the target.
+
+$$
+a \cdot b \approx \text{target}
+$$
+
+${diff === "hard" ? "Watch the sign." : ""}
+`.trim();
+
     const exercise: Exercise = {
       id,
       topic: "dot",
       difficulty: diff,
       kind: "vector_drag_dot",
       title: diff === "hard" ? "Drag: hit a dot target" : "Drag to match dot",
-      prompt:
-        diff === "hard"
-          ? "Drag a so that a · b ≈ target (watch the sign)."
-          : "Drag a so that a · b ≈ target.",
+      prompt,
       initialA: { x: 0, y: 0, z: 0 },
       b: B,
       targetDot: target,
@@ -40,9 +52,26 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
     };
   }
 
+  // -------------------- dot_classify --------------------
   if (archetype === "dot_classify") {
     const d = target;
     const correct = Math.abs(d) < 1e-9 ? "zero" : d > 0 ? "positive" : "negative";
+
+    const prompt = String.raw`
+Let
+
+$$
+a=${fmtVec2Latex(A.x, A.y)},
+\qquad
+b=${fmtVec2Latex(B.x, B.y)}.
+$$
+
+Determine the sign of
+
+$$
+a \cdot b
+$$
+`.trim();
 
     const exercise: Exercise = {
       id,
@@ -50,11 +79,11 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
       difficulty: diff,
       kind: "single_choice",
       title: "Dot product sign",
-      prompt: `For a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}), what is the sign of a · b?`,
+      prompt,
       options: [
-        { id: "positive", text: "Positive (acute angle)" },
-        { id: "zero", text: "Zero (perpendicular)" },
-        { id: "negative", text: "Negative (obtuse angle)" },
+        { id: "positive", text: "Positive" },
+        { id: "zero", text: "Zero" },
+        { id: "negative", text: "Negative" },
         { id: "cannot", text: "Cannot be determined from given vectors" },
       ],
     } as any;
@@ -62,6 +91,7 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
     return { archetype, exercise, expected: { kind: "single_choice", optionId: correct } };
   }
 
+  // -------------------- dot_word_work --------------------
   if (archetype === "dot_word_work") {
     const F = nonZeroVec(rng, diff);
     const disp = nonZeroVec(rng, diff);
@@ -71,14 +101,38 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
     const rounded = roundTo(work, decimals);
     const tol = diff === "easy" ? 0.5 : diff === "medium" ? 0.2 : 0.05;
 
+    const prompt = String.raw`
+A force \(F\) and displacement \(d\) are:
+
+$$
+F=${fmtVec2Latex(F.x, F.y)}\ \text{N},
+\qquad
+d=${fmtVec2Latex(disp.x, disp.y)}\ \text{m}.
+$$
+
+Compute the work
+
+$$
+W = F \cdot d
+$$
+
+${decimals ? `Round to ${decimals} decimal place(s).` : ""}
+`.trim();
+
+    const hint = String.raw`
+$$
+W = F \cdot d = F_x d_x + F_y d_y
+$$
+`.trim();
+
     const exercise: Exercise = {
       id,
       topic: "dot",
       difficulty: diff,
       kind: "numeric",
       title: "Work (dot product)",
-      prompt: `A force F=(${F.x}, ${F.y}) N moves an object by displacement d=(${disp.x}, ${disp.y}) m. Compute W = F · d.${decimals ? ` Round to ${decimals} decimal place(s).` : ""}`,
-      hint: "Work is a dot product: W = Fx·dx + Fy·dy",
+      prompt,
+      hint,
       correctValue: rounded,
       tolerance: tol,
     } as any;
@@ -86,19 +140,44 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
     return { archetype, exercise, expected: { kind: "numeric", value: rounded, tolerance: tol } };
   }
 
-  // dot_numeric
+  // -------------------- dot_numeric --------------------
   const tol = toleranceFor(diff, "numeric");
+
+  const prompt = String.raw`
+Let
+
+$$
+a=${fmtVec2Latex(A.x, A.y)},
+\qquad
+b=${fmtVec2Latex(B.x, B.y)}.
+$$
+
+Compute
+
+$$
+a \cdot b
+$$
+
+${diff === "hard" ? "Be careful with negatives." : ""}
+`.trim();
+
+  const hint =
+    diff === "easy"
+      ? String.raw`
+$$
+a \cdot b = a_x b_x + a_y b_y
+$$
+`.trim()
+      : undefined;
+
   const exercise: Exercise = {
     id,
     topic: "dot",
     difficulty: diff,
     kind: "numeric",
     title: diff === "hard" ? "Dot product (tricky)" : "Dot product",
-    prompt:
-      diff === "hard"
-        ? `Compute a · b for a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}). (Be careful with negatives.)`
-        : `Compute a · b for a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}).`,
-    hint: diff === "easy" ? "a · b = ax·bx + ay·by" : undefined,
+    prompt,
+    hint,
     correctValue: target,
     tolerance: tol,
   } as any;

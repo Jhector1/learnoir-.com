@@ -21,7 +21,7 @@ enum PracticeTopic {
   angle
   vectors
 
-  linear_linear_systems
+  linear_systems
   augmented
   rref
   solution_types
@@ -30,8 +30,12 @@ enum PracticeTopic {
 
    // Module 2 — Matrices
   matrix_ops
-  matrix_matrix_inverse
+  matrix_inverse
   matrix_properties
+
+    vectors_part2  
+    vectors_part1
+
 }
 
 

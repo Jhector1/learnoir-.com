@@ -1,10 +1,18 @@
-// src/lib/practice/generator/topics/angle.ts
 import type { Difficulty, Exercise } from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, dot, mag2D, roundTo } from "../utils";
 import { RNG } from "../rng";
 
-export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+// ---------- LaTeX helpers (matrixOps style) ----------
+function fmtVec2Latex(x: number, y: number) {
+  return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
+}
+
+export function genAngle(
+  rng: RNG,
+  diff: Difficulty,
+  id: string
+): GenOut<Exercise> {
   const archetype = rng.weighted([
     { value: "angle_numeric" as const, w: 6 },
     { value: "angle_classify" as const, w: diff === "easy" ? 6 : 3 },
@@ -20,9 +28,22 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
   const clamped = Math.max(-1, Math.min(1, cosExact));
   const angDegExact = (Math.acos(clamped) * 180) / Math.PI;
 
+  // -------------------- angle_classify (single_choice) --------------------
   if (archetype === "angle_classify") {
     const d = dot(A, B);
     const correct = Math.abs(d) < 1e-9 ? "right" : d > 0 ? "acute" : "obtuse";
+
+    const prompt = String.raw`
+Let
+
+$$
+a=${fmtVec2Latex(A.x, A.y)},
+\qquad
+b=${fmtVec2Latex(B.x, B.y)}.
+$$
+
+Classify the angle $$\theta$$ between $$a$$ and $$b$$.
+`.trim();
 
     const exercise: Exercise = {
       id,
@@ -30,11 +51,11 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
       difficulty: diff,
       kind: "single_choice",
       title: "Angle type",
-      prompt: `For a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}), classify the angle between them.`,
+      prompt,
       options: [
-        { id: "acute", text: "Acute (< 90°)" },
-        { id: "right", text: "Right (= 90°)" },
-        { id: "obtuse", text: "Obtuse (> 90°)" },
+        { id: "acute", text: String.raw`Acute ($$0^\circ < \theta < 90^\circ$$)` },
+        { id: "right", text: String.raw`Right ($$\theta = 90^\circ$$)` },
+        { id: "obtuse", text: String.raw`Obtuse ($$90^\circ < \theta < 180^\circ$$)` },
         { id: "cannot", text: "Cannot be determined without magnitudes" },
       ],
     } as any;
@@ -42,10 +63,30 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
     return { archetype, exercise, expected: { kind: "single_choice", optionId: correct } };
   }
 
+  // -------------------- cos_numeric (numeric) --------------------
   if (archetype === "cos_numeric") {
     const decimals = diff === "hard" ? 3 : 2;
     const value = roundTo(clamped, decimals);
     const tol = diff === "hard" ? 0.02 : 0.05;
+
+    const prompt = String.raw`
+Let
+
+$$
+a=${fmtVec2Latex(A.x, A.y)},
+\qquad
+b=${fmtVec2Latex(B.x, B.y)}.
+$$
+
+Compute $$\cos(\theta)$$, where $$\theta$$ is the angle between $$a$$ and $$b$$.
+Round to ${decimals} decimal place(s).
+`.trim();
+
+    const hint = String.raw`
+$$
+\cos(\theta)=\frac{a\cdot b}{\|a\|\|b\|}
+$$
+`.trim();
 
     const exercise: Exercise = {
       id,
@@ -53,8 +94,8 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
       difficulty: diff,
       kind: "numeric",
       title: "Cosine of angle",
-      prompt: `Compute cos(θ) between a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}). Round to ${decimals} decimals.`,
-      hint: "cos(θ) = (a·b)/(|a||b|)",
+      prompt,
+      hint,
       correctValue: value,
       tolerance: tol,
     } as any;
@@ -62,10 +103,32 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
     return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
   }
 
-  // angle_numeric
+  // -------------------- angle_numeric (numeric) --------------------
   const decimals = diff === "easy" ? 0 : 1;
   const value = roundTo(angDegExact, decimals);
   const tol = diff === "easy" ? 3 : diff === "medium" ? 1.5 : 1.0;
+
+  const prompt = String.raw`
+Let
+
+$$
+a=${fmtVec2Latex(A.x, A.y)},
+\qquad
+b=${fmtVec2Latex(B.x, B.y)}.
+$$
+
+Compute the angle $$\theta$$ (in degrees) between $$a$$ and $$b$$.
+Round to ${decimals} decimal place(s).
+`.trim();
+
+  const hint =
+    diff === "easy"
+      ? String.raw`
+$$
+\cos(\theta)=\frac{a\cdot b}{\|a\|\|b\|}
+$$
+`.trim()
+      : undefined;
 
   const exercise: Exercise = {
     id,
@@ -73,8 +136,8 @@ export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<Exercis
     difficulty: diff,
     kind: "numeric",
     title: "Angle between vectors",
-    prompt: `Compute the angle θ (degrees) between a=(${A.x}, ${A.y}) and b=(${B.x}, ${B.y}). Round to ${decimals} decimals.`,
-    hint: diff === "easy" ? "cos(θ) = (a·b)/(|a||b|)" : undefined,
+    prompt,
+    hint,
     correctValue: value,
     tolerance: tol,
   } as any;

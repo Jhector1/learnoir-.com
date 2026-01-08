@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PRACTICE_TOPICS = ["dot", "projection", "angle", "vectors"] as const;
+export const PRACTICE_TOPICS = ["dot", "projection", "angle", "vectors", "vectors_part1", "vectors_part2"] as const;
 export const PRACTICE_DIFFICULTIES = ["easy", "medium", "hard"] as const;
 export const ASSIGNMENT_STATUSES = ["draft", "published", "archived"] as const;
 

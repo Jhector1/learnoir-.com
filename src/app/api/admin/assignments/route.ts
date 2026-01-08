@@ -25,6 +25,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const parsed = AssignmentCreateSchema.safeParse(body);
+  console.log(`Admin fetched ${JSON.stringify(body)} assignments with status }`);
 
   if (!parsed.success) {
     return NextResponse.json(

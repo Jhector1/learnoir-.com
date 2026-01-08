@@ -25,7 +25,9 @@ export const TOPIC_LABEL: Record<Topic, string> = {
     matrix_ops: "Matrix ops (add/mul/transpose)",
     matrix_inverse: "Identity / matrix_inverse",
     matrix_properties: "Matrix properties",
-    
+    vectors_part1: "Vectors part 1",
+    vectors_part2: "Vectors part 2",
+
 };
 
 export const ALL_TOPICS = Object.keys(TOPIC_LABEL) as Topic[];

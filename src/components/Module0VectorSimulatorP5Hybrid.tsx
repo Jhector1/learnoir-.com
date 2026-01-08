@@ -21,6 +21,7 @@ import {
 
 type QuestionType = "dot" | "angle" | "scalarProj" | "projX" | "projY" | "projZ";
 type StatusKind = "idle" | "good" | "bad";
+
 type Question = {
   id: string;
   type: QuestionType;
@@ -33,7 +34,10 @@ type Question = {
 
 export default function Module0VectorSimulatorP5Hybrid() {
   const [mode, setMode] = useState<Mode>("2d");
+
+  // IMPORTANT: match VectorPad clamp range (VectorPad clamps 20..280)
   const [scale, setScale] = useState<number>(40);
+
   const [gridStep, setGridStep] = useState<number>(1);
   const [snapToGrid, setSnapToGrid] = useState<boolean>(true);
 
@@ -60,9 +64,10 @@ export default function Module0VectorSimulatorP5Hybrid() {
 
   // shared state for VectorPad
   const stateRef = useRef<VectorPadState>({
-    mode,
+    mode, // ✅ include mode
     scale,
     gridStep,
+    autoGridStep: true,
     snapToGrid,
     showGrid,
     showComponents,
@@ -77,18 +82,22 @@ export default function Module0VectorSimulatorP5Hybrid() {
 
   const zHeldRef = useRef(false);
 
+  // Z key tracking
   useEffect(() => {
     const isZ = (e: KeyboardEvent) => e.code === "KeyZ" || e.key === "z" || e.key === "Z";
+
     const down = (e: KeyboardEvent) => {
       if (!isZ(e)) return;
       zHeldRef.current = true;
       setZKeyUI(true);
     };
+
     const up = (e: KeyboardEvent) => {
       if (!isZ(e)) return;
       zHeldRef.current = false;
       setZKeyUI(false);
     };
+
     const blur = () => {
       zHeldRef.current = false;
       setZKeyUI(false);
@@ -99,6 +108,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
     document.addEventListener("keydown", down, true);
     document.addEventListener("keyup", up, true);
     window.addEventListener("blur", blur);
+
     return () => {
       window.removeEventListener("keydown", down, true);
       window.removeEventListener("keyup", up, true);
@@ -108,11 +118,14 @@ export default function Module0VectorSimulatorP5Hybrid() {
     };
   }, []);
 
+  // keep stateRef in sync with React state
   useEffect(() => {
     stateRef.current = {
-      mode,
+      ...stateRef.current, // ✅ preserve any future fields
+      mode, // ✅ now actually stored
       scale,
       gridStep,
+      autoGridStep: stateRef.current.autoGridStep ?? true,
       snapToGrid,
       showGrid,
       showComponents,
@@ -281,8 +294,10 @@ export default function Module0VectorSimulatorP5Hybrid() {
 
   function randomizeVectors() {
     const r = () => Math.round((Math.random() * 10 - 5) * 2) / 2;
+
     let A: Vec3 = { x: r(), y: r(), z: mode === "3d" ? r() : 0 };
     let B: Vec3 = { x: r(), y: r(), z: mode === "3d" ? r() : 0 };
+
     if (mag(B) < 1) B = { x: 3, y: 2, z: mode === "3d" ? 1.5 : 0 };
     if (mag(A) < 1) A = { x: 4, y: -1.5, z: mode === "3d" ? -1 : 0 };
 
@@ -305,14 +320,12 @@ export default function Module0VectorSimulatorP5Hybrid() {
 
   function zeroA() {
     const A: Vec3 = { x: 0, y: 0, z: 0 };
-    const B = stateRef.current.b;
     stateRef.current.a = A;
     setA(A);
     setStatus({ kind: "idle", msg: "Set a = 0. Dot/projection becomes 0." });
   }
 
   function zeroB() {
-    const A = stateRef.current.a;
     const B: Vec3 = { x: 0, y: 0, z: 0 };
     stateRef.current.b = B;
     setB(B);
@@ -361,10 +374,8 @@ export default function Module0VectorSimulatorP5Hybrid() {
       ? "border-rose-300/30 bg-rose-300/10 text-white/90"
       : "border-white/10 bg-black/20 text-white/70";
 
-  const aLabel =
-    mode === "2d" ? `(${fmt2(a.x)}, ${fmt2(a.y)})` : `(${fmt2(a.x)}, ${fmt2(a.y)}, ${fmt2(a.z)})`;
-  const bLabel =
-    mode === "2d" ? `(${fmt2(b.x)}, ${fmt2(b.y)})` : `(${fmt2(b.x)}, ${fmt2(b.y)}, ${fmt2(b.z)})`;
+  const aLabel = mode === "2d" ? `(${fmt2(a.x)}, ${fmt2(a.y)})` : `(${fmt2(a.x)}, ${fmt2(a.y)}, ${fmt2(a.z)})`;
+  const bLabel = mode === "2d" ? `(${fmt2(b.x)}, ${fmt2(b.y)})` : `(${fmt2(b.x)}, ${fmt2(b.y)}, ${fmt2(b.z)})`;
 
   const killEvent = (e: any) => {
     e.stopPropagation?.();
@@ -400,9 +411,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
               ) : (
                 <>
                   Orbit the camera. Drag the spheres to move vectors. Hold{" "}
-                  <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
-                    Z
-                  </span>{" "}
+                  <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">Z</span>{" "}
                   while dragging (or enable Depth mode) to change depth.
                 </>
               )}
@@ -434,16 +443,16 @@ export default function Module0VectorSimulatorP5Hybrid() {
 
           <div className="border-b border-white/10 p-3">
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">
-                {mode === "2d" ? "Scale (px per unit)" : "Visual scale"}
-              </div>
+              <div className="text-xs font-extrabold text-white/70">{mode === "2d" ? "Scale (px per unit)" : "Visual scale"}</div>
               <div className="font-extrabold tabular-nums">{scale}</div>
             </div>
+
+            {/* ✅ match VectorPad's clamp range */}
             <input
               className="mt-2 w-full"
               type="range"
               min={20}
-              max={80}
+              max={280}
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
             />
@@ -518,6 +527,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
             </div>
           </div>
 
+          {/* overlays */}
           <div className="border-b border-white/10 p-3">
             <div className="mb-2 text-sm font-black">Overlays</div>
             <div className="grid grid-cols-2 gap-2">
@@ -530,6 +540,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
             </div>
           </div>
 
+          {/* live math */}
           <div className="border-b border-white/10 p-3">
             <div className="mb-2 text-sm font-black">Live Math</div>
 
@@ -572,6 +583,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
             </div>
           </div>
 
+          {/* practice mode */}
           <div className="p-3">
             <div className="mb-2 text-sm font-black">Practice Mode</div>
 
@@ -643,6 +655,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
               mode={mode}
               stateRef={stateRef}
               zHeldRef={zHeldRef}
+              onScaleChange={setScale} // ✅ IMPORTANT: wheel zoom updates slider
               onPreview={(na, nb) => {
                 setA(na);
                 setB(nb);
@@ -668,9 +681,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
                 ) : (
                   <>
                     Orbit: drag on empty space. Pick a sphere to drag. Hold{" "}
-                    <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
-                      Z
-                    </span>{" "}
+                    <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">Z</span>{" "}
                     while dragging (or enable Depth mode) to move along depth (z).
                   </>
                 )}

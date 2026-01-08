@@ -35,6 +35,10 @@ export async function GET() {
 
   type AssignmentRow = Awaited<typeof assignmentsPromise>[number];
   const assignments = await assignmentsPromise;
+  console.log(`Fetched ${assignments} assignments for actor`, {
+    userId: actor.userId,
+    guestId: actor.guestId,
+  });
 
   // optional: attempts remaining (only if actor exists)
   let counts = new Map<string, number>();

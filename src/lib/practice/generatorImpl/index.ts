@@ -16,6 +16,8 @@ import { genParametric } from "./topics/parametric";
 import { genMatrixOps } from "./topics/matrixOps";
 import { genMatrixInverse } from "./topics/matrixInverse";
 import { genMatrixProperties } from "./topics/matrixProperties";
+import { genVectorsPart2 } from "./topics/vectorsPart2";
+import { genVectorsPart1 } from "./topics/vectorsPart1";
 
 function makeId(topic: string, diff: string, rng: RNG) {
   // No Date.now here => stable in assignment mode if seed is stable
@@ -33,7 +35,7 @@ export async function getExerciseWithExpectedImpl(
   const finalTopic = normalizeTopic(topic, rng);
   const diff = normalizeDifficulty(difficulty, rng);
   const id = makeId(finalTopic, diff, rng);
-
+  console.log(`Generating exercise id=${id} topic=${finalTopic} difficulty=${diff}`);
   switch (finalTopic) {
     case "dot": {
       const { exercise, expected } = genDot(rng, diff, id);
@@ -81,6 +83,14 @@ export async function getExerciseWithExpectedImpl(
     }
     case "matrix_properties": {
       const { exercise, expected } = genMatrixProperties(rng, diff, id);
+      return { exercise, expected };
+    }
+    case "vectors_part2": {
+      const { exercise, expected } = genVectorsPart2(rng, diff, id);
+      return { exercise, expected };
+    }
+     case "vectors_part1": {
+      const { exercise, expected } = genVectorsPart1(rng, diff, id);
       return { exercise, expected };
     }
     default: {
