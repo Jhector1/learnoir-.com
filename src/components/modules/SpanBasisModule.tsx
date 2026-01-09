@@ -5,6 +5,8 @@ import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Mode, Vec3 } from "@/lib/math/vec3";
 import { mag, safeUnit, mul, cross, areCollinear2D } from "@/lib/math/vec3";
+import { useZHeldRef } from "@/components/vectorpad/useZHeldRef";
+import { useRafForceUpdate } from "@/components/vectorpad/useRafForceUpdate";
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
@@ -50,7 +52,11 @@ export default function SpanBasisModule({
   mode?: Mode;
   className?: string;
 }) {
-  const zHeldRef = useRef(false);
+  // ✅ shared z tracking
+  const { zHeldRef } = useZHeldRef();
+
+  // ✅ smooth rerender helper (RAF-throttled)
+  const bump = useRafForceUpdate();
 
   // Single source of truth for VectorPad + overlays
   const stateRef = useRef<VectorPadState>({
@@ -79,10 +85,6 @@ export default function SpanBasisModule({
     beta: 1,
   });
 
-  // Force rerender (since stateRef updates don't trigger renders)
-  const [, force] = useState(0);
-  const rerender = () => force((x) => x + 1);
-
   const st = stateRef.current;
 
   // -----------------------------
@@ -100,7 +102,7 @@ export default function SpanBasisModule({
     setTarget((t) => ({ ...t, z: mode === "3d" ? (t.z ?? 0) : 0 }));
   }, [mode]);
 
-  // α/β animator
+  // α/β animator (mutates ref, then bumps render)
   useEffect(() => {
     if (!playing) return;
 
@@ -109,19 +111,19 @@ export default function SpanBasisModule({
       phaseRef.current += 0.018 * speed;
       const p = phaseRef.current;
 
-      // nice motion: not perfectly circular, feels "alive"
       st.alpha = clamp(Math.sin(p) * 2.4 + Math.sin(p * 0.5) * 0.5, -3, 3);
       st.beta = clamp(Math.cos(p * 0.9) * 2.4, -3, 3);
 
-      rerender();
+      bump();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, speed]); // st is ref-backed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, speed]);
 
   // -----------------------------
-  // Derived math (live dashboard)
+  // Derived math for UI (render-time; stays smooth because we bump on preview)
   // -----------------------------
   const A = st.a;
   const B = st.b;
@@ -141,15 +143,14 @@ export default function SpanBasisModule({
   const dependent = useMemo(() => {
     if (mag(A) < 1e-9 || mag(B) < 1e-9) return true;
     if (mode === "2d") return areCollinear2D(A, B);
-    // 3D: dependent if cross ~ 0
     return mag(cross(A, B)) < 1e-6;
   }, [A.x, A.y, A.z, B.x, B.y, B.z, mode]);
 
   const spanDim = dependent ? 1 : 2;
 
-  const area2D = Math.abs(det2(A, B)); // parallelogram area in 2D
+  const area2D = Math.abs(det2(A, B));
   const n = cross(A, B);
-  const planeArea3D = mag(n); // parallelogram area magnitude
+  const planeArea3D = mag(n);
   const angDeg = (angleRad(A, B) * 180) / Math.PI;
 
   const targetDiff = useMemo(() => {
@@ -163,7 +164,7 @@ export default function SpanBasisModule({
   }, [X.x, X.y, X.z, target.x, target.y, target.z, mode]);
 
   // -----------------------------
-  // Overlays
+  // Overlays (compute from stateRef.current INSIDE for perfect live sync)
   // -----------------------------
   const overlay2D = ({
     s,
@@ -178,11 +179,22 @@ export default function SpanBasisModule({
     origin: () => { x: number; y: number };
     worldToScreen2: (v: Vec3) => { x: number; y: number };
   }) => {
-    if (st.view !== "span") return;
+    const stLive = stateRef.current;
+    if (stLive.view !== "span") return;
+
+    const A2 = stLive.a;
+    const B2 = stLive.b;
+    const a2 = stLive.alpha ?? 1;
+    const b2 = stLive.beta ?? 1;
+
+    const X2: Vec3 = { x: A2.x * a2 + B2.x * b2, y: A2.y * a2 + B2.y * b2, z: 0 };
+
+    const dep2 =
+      mag(A2) < 1e-9 || mag(B2) < 1e-9 ? true : areCollinear2D(A2, B2);
 
     const o = origin();
-    const showSpan = !!st.showSpan;
-    const showCell = !!st.showCell;
+    const showSpan = !!stLive.showSpan;
+    const showCell = !!stLive.showCell;
 
     const drawArrow = (
       from: { x: number; y: number },
@@ -206,11 +218,11 @@ export default function SpanBasisModule({
     };
 
     // 1) subspace line if dependent
-    if (showSpan && dependent) {
-      const dir = safeUnit(A) ?? safeUnit(B);
+    if (showSpan && dep2) {
+      const dir = safeUnit(A2) ?? safeUnit(B2);
       if (dir) {
         const Lpx = Math.max(W, H);
-        const L = Lpx / st.scale;
+        const L = Lpx / stLive.scale;
         const p1 = worldToScreen2(mul(dir, -L));
         const p2 = worldToScreen2(mul(dir, L));
 
@@ -231,10 +243,10 @@ export default function SpanBasisModule({
     }
 
     // 2) cell parallelogram if independent
-    if (showCell && !dependent) {
-      const pA = worldToScreen2(A);
-      const pB = worldToScreen2(B);
-      const pAB = worldToScreen2({ x: A.x + B.x, y: A.y + B.y, z: 0 });
+    if (showCell && !dep2) {
+      const pA = worldToScreen2(A2);
+      const pB = worldToScreen2(B2);
+      const pAB = worldToScreen2({ x: A2.x + B2.x, y: A2.y + B2.y, z: 0 });
 
       s.push();
       s.noStroke();
@@ -267,7 +279,7 @@ export default function SpanBasisModule({
     }
 
     // 3) combo vector x = αa + βb
-    const tip = worldToScreen2(X);
+    const tip = worldToScreen2(X2);
     drawArrow(o, tip, 4);
 
     s.push();
@@ -275,11 +287,15 @@ export default function SpanBasisModule({
     s.fill("rgba(255,255,255,0.88)");
     s.textSize(12);
     s.textAlign(s.LEFT, s.CENTER);
-    s.text(`x = αa + βb  (α=${fmt(alpha)}, β=${fmt(beta)})`, tip.x + 10, tip.y);
+    s.text(`x = αa + βb  (α=${fmt(a2)}, β=${fmt(b2)})`, tip.x + 10, tip.y);
     s.pop();
 
-    // 4) target overlay (fun)
+    // 4) target overlay
+    let dist = 0;
     if (targetEnabled) {
+      const dz = 0;
+      dist = Math.hypot(X2.x - target.x, X2.y - target.y, dz);
+
       const tTip = worldToScreen2(target);
       s.push();
       s.stroke("rgba(80,255,180,0.9)");
@@ -305,12 +321,11 @@ export default function SpanBasisModule({
     s.textSize(12);
     s.textAlign(s.LEFT, s.CENTER);
 
-    const badge =
-      dependent
-        ? `Span dim = 1 (line). det≈0 → not a basis for R².`
-        : `Span dim = 2. det=${fmt(det2(A, B))} → {a,b} is a basis for R².`;
+    const badge = dep2
+      ? `Span dim = 1 (line). det≈0 → not a basis for R².`
+      : `Span dim = 2. det=${fmt(det2(A2, B2))} → {a,b} is a basis for R².`;
 
-    const extra = targetEnabled ? `  |  error‖x−t‖=${fmt3(targetDiff.dist)}` : "";
+    const extra = targetEnabled ? `  |  error‖x−t‖=${fmt3(dist)}` : "";
 
     s.text(badge + extra, 22, H - 32);
     s.pop();
@@ -327,17 +342,32 @@ export default function SpanBasisModule({
     H: number;
     labelAt: (x: number, y: number, z: number, text: string, col: string) => void;
   }) => {
-    if (st.view !== "span") return;
+    const stLive = stateRef.current;
+    if (stLive.view !== "span") return;
 
-    const sc = st.scale;
+    const A3 = stLive.a;
+    const B3 = stLive.b;
+    const a3 = stLive.alpha ?? 1;
+    const b3 = stLive.beta ?? 1;
+
+    const X3: Vec3 = {
+      x: A3.x * a3 + B3.x * b3,
+      y: A3.y * a3 + B3.y * b3,
+      z: (A3.z ?? 0) * a3 + (B3.z ?? 0) * b3,
+    };
+
+    const dep3 =
+      mag(A3) < 1e-9 || mag(B3) < 1e-9 ? true : mag(cross(A3, B3)) < 1e-6;
+
+    const sc = stLive.scale;
 
     // plane patch if independent
-    if (st.showSpan && !dependent) {
+    if (stLive.showSpan && !dep3) {
       const k = 3;
       const p = (u: number, v: number) => ({
-        x: (A.x * u + B.x * v) * k * sc,
-        y: (-A.y * u - B.y * v) * k * sc,
-        z: ((A.z ?? 0) * u + (B.z ?? 0) * v) * k * sc,
+        x: (A3.x * u + B3.x * v) * k * sc,
+        y: (-A3.y * u - B3.y * v) * k * sc,
+        z: ((A3.z ?? 0) * u + (B3.z ?? 0) * v) * k * sc,
       });
 
       const p00 = p(-1, -1);
@@ -375,36 +405,33 @@ export default function SpanBasisModule({
     s.push();
     s.stroke("rgba(255,255,255,0.88)");
     s.strokeWeight(4);
-    s.line(0, 0, 0, X.x * sc, -X.y * sc, (X.z ?? 0) * sc);
+    s.line(0, 0, 0, X3.x * sc, -X3.y * sc, (X3.z ?? 0) * sc);
     s.pop();
 
     labelAt(
-      X.x * sc,
-      -X.y * sc,
-      (X.z ?? 0) * sc,
-      `x = αa + βb (α=${fmt(alpha)}, β=${fmt(beta)})`,
+      X3.x * sc,
+      -X3.y * sc,
+      (X3.z ?? 0) * sc,
+      `x = αa + βb (α=${fmt(a3)}, β=${fmt(b3)})`,
       "rgba(255,255,255,0.88)"
     );
 
     // target vector t
     if (targetEnabled) {
+      const dz = (X3.z ?? 0) - (target.z ?? 0);
+      const dist = Math.hypot(X3.x - target.x, X3.y - target.y, dz);
+
       s.push();
       s.stroke("rgba(80,255,180,0.9)");
       s.strokeWeight(3);
-      s.line(
-        0,
-        0,
-        0,
-        target.x * sc,
-        -target.y * sc,
-        (target.z ?? 0) * sc
-      );
+      s.line(0, 0, 0, target.x * sc, -target.y * sc, (target.z ?? 0) * sc);
       s.pop();
+
       labelAt(
         target.x * sc,
         -target.y * sc,
         (target.z ?? 0) * sc,
-        `target t (error=${fmt3(targetDiff.dist)})`,
+        `target t (error=${fmt3(dist)})`,
         "rgba(80,255,180,0.9)"
       );
     }
@@ -420,39 +447,37 @@ export default function SpanBasisModule({
     s.textSize(12);
     s.textAlign(s.LEFT, s.CENTER);
 
-    const badge = dependent
+    const badge = dep3
       ? "Span dim = 1 (line) • basis = any nonzero direction vector"
       : "Span dim = 2 (plane) • {a,b} is a basis for that plane";
 
-    const extra = targetEnabled ? `  |  error‖x−t‖=${fmt3(targetDiff.dist)}` : "";
-
-    s.text(badge + extra, 22, H - 32);
+    s.text(badge, 22, H - 32);
     s.pop();
   };
 
   // -----------------------------
-  // UI helpers
+  // UI helpers (mutate ref + bump)
   // -----------------------------
   const setAlpha = (v: number) => {
     st.alpha = clamp(v, -3, 3);
-    rerender();
+    bump();
   };
   const setBeta = (v: number) => {
     st.beta = clamp(v, -3, 3);
-    rerender();
+    bump();
   };
 
   const setA = (patch: Partial<Vec3>) => {
     const next = { ...st.a, ...patch };
     if (!isFiniteVec(next)) return;
     st.a = next;
-    rerender();
+    bump();
   };
   const setB = (patch: Partial<Vec3>) => {
     const next = { ...st.b, ...patch };
     if (!isFiniteVec(next)) return;
     st.b = next;
-    rerender();
+    bump();
   };
 
   const reset = () => {
@@ -463,43 +488,40 @@ export default function SpanBasisModule({
     setTarget({ x: 2, y: 2, z: 0 });
     phaseRef.current = 0;
     setPlaying(false);
-    rerender();
+    bump();
   };
 
   const randomIndependent = () => {
-    // Try a few times to avoid near-collinearity
     for (let i = 0; i < 12; i++) {
-      const a: Vec3 = { x: randInt(-3, 3), y: randInt(-3, 3), z: mode === "3d" ? randInt(-2, 2) : 0 };
-      const b: Vec3 = { x: randInt(-3, 3), y: randInt(-3, 3), z: mode === "3d" ? randInt(-2, 2) : 0 };
-      if (mag(a) < 1e-9 || mag(b) < 1e-9) continue;
+      const aV: Vec3 = { x: randInt(-3, 3), y: randInt(-3, 3), z: mode === "3d" ? randInt(-2, 2) : 0 };
+      const bV: Vec3 = { x: randInt(-3, 3), y: randInt(-3, 3), z: mode === "3d" ? randInt(-2, 2) : 0 };
+      if (mag(aV) < 1e-9 || mag(bV) < 1e-9) continue;
 
       const dep =
-        mode === "2d" ? areCollinear2D(a, b) : mag(cross(a, b)) < 1e-6;
+        mode === "2d" ? areCollinear2D(aV, bV) : mag(cross(aV, bV)) < 1e-6;
 
       if (!dep) {
-        st.a = a;
-        st.b = b;
-        rerender();
+        st.a = aV;
+        st.b = bV;
+        bump();
         return;
       }
     }
-    // fallback
     st.a = { x: 2, y: 1, z: 0 };
     st.b = { x: 1, y: 2, z: 0 };
-    rerender();
+    bump();
   };
 
   const makeDependent = () => {
-    // Force b = k*a (collinear)
     const k = randInt(-3, 3) || 2;
     st.b = { x: st.a.x * k, y: st.a.y * k, z: (st.a.z ?? 0) * k };
-    rerender();
+    bump();
   };
 
   const snapAlphaBeta = () => {
     st.alpha = clamp(Math.round(st.alpha ?? 0), -3, 3);
     st.beta = clamp(Math.round(st.beta ?? 0), -3, 3);
-    rerender();
+    bump();
   };
 
   const newTarget = () => {
@@ -519,6 +541,9 @@ export default function SpanBasisModule({
           zHeldRef={zHeldRef}
           overlay2D={mode === "2d" ? overlay2D : undefined}
           overlay3D={mode === "3d" ? overlay3D : undefined}
+          onPreview={() => bump()}
+          onCommit={() => bump()}
+          previewThrottleMs={16}
         />
       </div>
 
@@ -568,7 +593,7 @@ export default function SpanBasisModule({
               checked={!!st.showSpan}
               onChange={(e) => {
                 st.showSpan = e.target.checked;
-                rerender();
+                bump();
               }}
             />
           </label>
@@ -580,7 +605,7 @@ export default function SpanBasisModule({
               checked={!!st.showCell}
               onChange={(e) => {
                 st.showCell = e.target.checked;
-                rerender();
+                bump();
               }}
             />
           </label>
@@ -593,7 +618,7 @@ export default function SpanBasisModule({
                 checked={!!st.depthMode}
                 onChange={(e) => {
                   st.depthMode = e.target.checked;
-                  rerender();
+                  bump();
                 }}
               />
             </label>
@@ -827,8 +852,7 @@ export default function SpanBasisModule({
               <div className="flex items-center justify-between">
                 <span className="text-white/60">det(a,b)</span>
                 <span className="text-white/85">
-                  {fmt(det2(A, B))}{" "}
-                  <span className="text-white/50">(area={fmt(area2D)})</span>
+                  {fmt(det2(A, B))} <span className="text-white/50">(area={fmt(area2D)})</span>
                 </span>
               </div>
             ) : (

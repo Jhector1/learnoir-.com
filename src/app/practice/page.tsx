@@ -19,9 +19,8 @@ import type {
 } from "@/lib/practice/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MathMarkdown from "@/components/math/MathMarkdown";
-// import { MathBlock } from "../../components/math/Math";
 
-const SESSION_SIZE = 10;
+const SESSION_DEFAULT = 10;
 
 async function readJsonSafe(res: Response) {
   const text = await res.text();
@@ -147,6 +146,9 @@ export default function PracticePage() {
   const current = stack[idx] ?? null;
   const exercise = current?.exercise ?? null;
 
+  // ✅ session size is state (not a let)
+  const [sessionSize, setSessionSize] = useState<number>(SESSION_DEFAULT);
+
   const answeredCount = useMemo(
     () => stack.filter((q) => q.submitted).length,
     [stack]
@@ -181,6 +183,9 @@ export default function PracticePage() {
     return out;
   }, [stack]);
 
+  const isAssignmentRun =
+    sp.get("type") === "assignment" || !!sp.get("assignmentId");
+
   const hasProgress =
     phase === "practice" &&
     (answeredCount > 0 ||
@@ -202,27 +207,39 @@ export default function PracticePage() {
     setPendingChange(next);
     setConfirmOpen(true);
   }
-  type GridMode = "auto" | "fixed";
 
+  type GridMode = "auto" | "fixed";
   const BASE_PX_PER_SQUARE = 44;
-  // What users can pick manually (feel free to tweak)
   const GRID_STEPS: number[] = [0.25, 0.5, 1, 2, 5, 10, 20];
-  const isAssignmentRun =
-    sp.get("type") === "assignment" || !!sp.get("assignmentId");
 
   const [gridMode, setGridMode] = useState<GridMode>("auto");
-  // what we show in UI (and bind to the dropdown)
   const [gridLabelStep, setGridLabelStep] = useState<number>(1);
+
+  // --- VectorPad (2D only) ---
+  const zHeldRef = useRef(false);
+
+  const padRef = useRef<VectorPadState>({
+    mode: "2d",
+    scale: 40,
+    gridStep: 1,
+    snapToGrid: true,
+    showGrid: true,
+    showComponents: true,
+    showAngle: false,
+    showProjection: false,
+    showUnitB: false,
+    showPerp: false,
+    depthMode: false,
+    a: { x: 0, y: 0, z: 0 } as any,
+    b: { x: 2, y: 1, z: 0 } as any,
+  });
 
   function setGrid(step: number) {
     const s = Number(step);
     if (!Number.isFinite(s) || s <= 0) return;
 
-    // Keep "one square" visually consistent in pixels:
-    // gridline spacing = scale * gridStep = BASE_PX_PER_SQUARE
     padRef.current.gridStep = s;
     padRef.current.scale = BASE_PX_PER_SQUARE / s;
-
     setGridLabelStep(s);
   }
 
@@ -237,12 +254,10 @@ export default function PracticePage() {
   }
 
   function autoGridForExercise(ex: Exercise) {
-    // Only auto-scale for vector pads
     if (ex.kind !== "vector_drag_target" && ex.kind !== "vector_drag_dot")
       return;
 
     const vals: number[] = [];
-
     const pushVec = (v?: any) => {
       if (!v) return;
       vals.push(Math.abs(Number(v.x ?? 0)), Math.abs(Number(v.y ?? 0)));
@@ -253,14 +268,13 @@ export default function PracticePage() {
     pushVec((ex as any).targetA);
     pushVec((ex as any).b);
 
-    // Extra: dot questions might require a large |a| even if initialA is small
     if (ex.kind === "vector_drag_dot") {
       const bx = Number((ex as any).b?.x ?? 0);
       const by = Number((ex as any).b?.y ?? 0);
       const bmag = Math.sqrt(bx * bx + by * by) || 1;
 
       const targetDot = Math.abs(Number((ex as any).targetDot ?? 0));
-      const estAlong = targetDot / bmag; // rough magnitude needed along b
+      const estAlong = targetDot / bmag;
       if (Number.isFinite(estAlong)) vals.push(estAlong);
     }
 
@@ -268,7 +282,6 @@ export default function PracticePage() {
     setGrid(chooseGridStep(maxAbs));
   }
 
-  // Auto-run when the question changes (NOT while dragging)
   useEffect(() => {
     if (!exercise) return;
     if (gridMode !== "auto") return;
@@ -289,7 +302,6 @@ export default function PracticePage() {
     setPendingChange(null);
   }
 
-
   useEffect(() => {
     if (!confirmOpen) return;
 
@@ -306,7 +318,7 @@ export default function PracticePage() {
     };
   }, [confirmOpen]);
 
-  function storageKey(
+  function storageKeyV3(
     s: string | null,
     t: Topic | "all",
     d: Difficulty | "all"
@@ -314,12 +326,27 @@ export default function PracticePage() {
     return `practice:v3:${s ?? "no-section"}:${t}:${d}`;
   }
 
+  function storageKeyV4(
+    s: string | null,
+    t: Topic | "all",
+    d: Difficulty | "all",
+    n: number
+  ) {
+    return `practice:v4:${s ?? "no-section"}:${t}:${d}:n=${n}`;
+  }
+
+  // ✅ hydrate (restore)
   useEffect(() => {
     if (hydrated) return;
 
     const sectionParam = sp.get("section");
     const difficultyParam = sp.get("difficulty");
     const topicParam = sp.get("topic");
+
+    const questionCountParam = sp.get("questionCount");
+    const qcParsed = questionCountParam ? parseInt(questionCountParam, 10) : NaN;
+    const sizeFromParam =
+      Number.isFinite(qcParsed) && qcParsed > 0 ? qcParsed : null;
 
     const nextSection = sectionParam ?? null;
 
@@ -336,19 +363,60 @@ export default function PracticePage() {
       topicParam === "dot" ||
       topicParam === "projection" ||
       topicParam === "angle" ||
-      topicParam === "vectors"
-       ||
-      topicParam === "vectors_part2"
-       ||
+      topicParam === "vectors" ||
+      topicParam === "vectors_part2" ||
       topicParam === "vectors_part1"
         ? (topicParam as any)
         : "all";
 
+    const initialSize = sizeFromParam ?? SESSION_DEFAULT;
+    setSessionSize(initialSize);
+
     try {
-      const k = storageKey(nextSection, nextTopic, nextDifficulty);
-      const raw = sessionStorage.getItem(k);
-      if (raw) {
-        const saved = JSON.parse(raw);
+      const k4 = storageKeyV4(nextSection, nextTopic, nextDifficulty, initialSize);
+      const raw4 = sessionStorage.getItem(k4);
+
+      if (raw4) {
+        const saved = JSON.parse(raw4);
+        if (saved?.v === 4) {
+          setSection(saved.section ?? nextSection);
+          setTopic(saved.topic ?? nextTopic);
+          setDifficulty(saved.difficulty ?? nextDifficulty);
+
+          setSessionId(saved.sessionId ?? null);
+          setPhase(saved.phase ?? "practice");
+          setShowMissed(saved.showMissed ?? true);
+
+          setStack(Array.isArray(saved.stack) ? saved.stack : []);
+          setIdx(
+            typeof saved.idx === "number"
+              ? Math.max(
+                  0,
+                  Math.min(saved.idx, (saved.stack?.length ?? 1) - 1)
+                )
+              : 0
+          );
+
+          setSessionSize(
+            typeof saved.sessionSize === "number" && saved.sessionSize > 0
+              ? saved.sessionSize
+              : initialSize
+          );
+
+          setLoadErr(null);
+          restoredRef.current = true;
+          firstFiltersEffectRef.current = true;
+          skipUrlSyncRef.current = true;
+          setHydrated(true);
+          return;
+        }
+      }
+
+      const k3 = storageKeyV3(nextSection, nextTopic, nextDifficulty);
+      const raw3 = sessionStorage.getItem(k3);
+
+      if (raw3) {
+        const saved = JSON.parse(raw3);
         if (saved?.v === 3) {
           setSection(saved.section ?? nextSection);
           setTopic(saved.topic ?? nextTopic);
@@ -361,9 +429,14 @@ export default function PracticePage() {
           setStack(Array.isArray(saved.stack) ? saved.stack : []);
           setIdx(
             typeof saved.idx === "number"
-              ? Math.max(0, Math.min(saved.idx, (saved.stack?.length ?? 1) - 1))
+              ? Math.max(
+                  0,
+                  Math.min(saved.idx, (saved.stack?.length ?? 1) - 1)
+                )
               : 0
           );
+
+          setSessionSize(initialSize);
 
           setLoadErr(null);
           restoredRef.current = true;
@@ -373,8 +446,11 @@ export default function PracticePage() {
           return;
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
 
+    // fresh
     setSection(nextSection);
     setTopic(nextTopic);
     setDifficulty(nextDifficulty);
@@ -392,10 +468,12 @@ export default function PracticePage() {
     setHydrated(true);
   }, [sp, hydrated]);
 
+  // ✅ persist
   useEffect(() => {
     if (!hydrated) return;
+
     const payload = {
-      v: 3,
+      v: 4,
       savedAt: Date.now(),
       section,
       topic,
@@ -405,10 +483,12 @@ export default function PracticePage() {
       showMissed,
       stack,
       idx,
+      sessionSize,
     };
+
     try {
       sessionStorage.setItem(
-        storageKey(section, topic, difficulty),
+        storageKeyV4(section, topic, difficulty, sessionSize),
         JSON.stringify(payload)
       );
     } catch {}
@@ -422,8 +502,10 @@ export default function PracticePage() {
     showMissed,
     stack,
     idx,
+    sessionSize,
   ]);
 
+  // ✅ URL sync (includes questionCount)
   useEffect(() => {
     if (!hydrated) return;
 
@@ -440,13 +522,17 @@ export default function PracticePage() {
     qs.set("topic", topic);
     qs.set("difficulty", difficulty);
 
+    if (sessionSize && sessionSize !== SESSION_DEFAULT)
+      qs.set("questionCount", String(sessionSize));
+    else qs.delete("questionCount");
+
     const desired = qs.toString();
     const currentSearch = sp.toString();
     if (desired === currentSearch) return;
 
     router.replace(`${pathname}?${desired}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, section, topic, difficulty, pathname, router]);
+  }, [hydrated, section, topic, difficulty, sessionSize, pathname, router, sp]);
 
   function updateCurrent(patch: Partial<QItem>) {
     setStack((prev) => {
@@ -466,7 +552,7 @@ export default function PracticePage() {
       b = cloneVec(ex.initialB ?? { x: 2, y: 1, z: 0 });
     } else if (ex.kind === "vector_drag_dot") {
       a = cloneVec(ex.initialA);
-      b = cloneVec(ex.b ?? { x: 2, y: 1, z: 0 }); // ✅ fallback
+      b = cloneVec(ex.b ?? { x: 2, y: 1, z: 0 });
     }
 
     return {
@@ -484,7 +570,7 @@ export default function PracticePage() {
   }
 
   async function loadNextExercise(opts?: { forceNew?: boolean }) {
-    if (answeredCount >= SESSION_SIZE && !opts?.forceNew) return;
+    if (answeredCount >= sessionSize && !opts?.forceNew) return;
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -560,9 +646,9 @@ export default function PracticePage() {
   }, [hydrated]);
 
   useEffect(() => {
-    if (phase === "practice" && answeredCount >= SESSION_SIZE)
+    if (phase === "practice" && answeredCount >= sessionSize)
       setPhase("summary");
-  }, [answeredCount, phase]);
+  }, [answeredCount, phase, sessionSize]);
 
   function canGoPrev() {
     return idx > 0;
@@ -570,7 +656,7 @@ export default function PracticePage() {
 
   function canGoNext() {
     if (idx < stack.length - 1) return true;
-    return answeredCount < SESSION_SIZE;
+    return answeredCount < sessionSize;
   }
 
   function goPrev() {
@@ -589,71 +675,71 @@ export default function PracticePage() {
     await loadNextExercise();
   }
 
-const submitLockRef = useRef(false);
+  const submitLockRef = useRef(false);
 
-async function submitAnswer() {
-  if (submitLockRef.current) return;
-  if (!current || !exercise) return;
-  if (busy) return; // optional safety
+  async function submitAnswer() {
+    if (submitLockRef.current) return;
+    if (!current || !exercise) return;
+    if (busy) return;
 
-  submitLockRef.current = true;
-  setActionErr(null);
+    submitLockRef.current = true;
+    setActionErr(null);
 
-  try {
-    // ✅ for vector questions: read live a/b directly from VectorPad stateRef
-    let answer: SubmitAnswer | undefined;
+    try {
+      let answer: SubmitAnswer | undefined;
 
-    if (exercise.kind === "vector_drag_dot") {
-      answer = { kind: "vector_drag_dot", a: cloneVec(padRef.current.a) };
-    } else if (exercise.kind === "vector_drag_target") {
-      answer = {
-        kind: "vector_drag_target",
-        a: cloneVec(padRef.current.a),
-        b: cloneVec(padRef.current.b),
-      };
-    } else {
-      answer = buildSubmitAnswerFromItem(current);
-    }
+      if (exercise.kind === "vector_drag_dot") {
+        answer = { kind: "vector_drag_dot", a: cloneVec(padRef.current.a) };
+      } else if (exercise.kind === "vector_drag_target") {
+        answer = {
+          kind: "vector_drag_target",
+          a: cloneVec(padRef.current.a),
+          b: cloneVec(padRef.current.b),
+        };
+      } else {
+        answer = buildSubmitAnswerFromItem(current);
+      }
 
-    if (!answer) {
-      setActionErr("Answer is incomplete or invalid.");
-      return;
-    }
+      if (!answer) {
+        setActionErr("Answer is incomplete or invalid.");
+        return;
+      }
 
-    // ✅ keep the UI state in sync with what we actually submit
-    if (exercise.kind === "vector_drag_dot") {
-      updateCurrent({ dragA: cloneVec(padRef.current.a) });
-    } else if (exercise.kind === "vector_drag_target") {
-      updateCurrent({
-        dragA: cloneVec(padRef.current.a),
-        dragB: cloneVec(padRef.current.b),
+      if (exercise.kind === "vector_drag_dot") {
+        updateCurrent({ dragA: cloneVec(padRef.current.a) });
+      } else if (exercise.kind === "vector_drag_target") {
+        updateCurrent({
+          dragA: cloneVec(padRef.current.a),
+          dragB: cloneVec(padRef.current.b),
+        });
+      }
+
+      setBusy(true);
+
+      const r = await fetch("/api/practice/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: current.key, answer }),
       });
+
+      const data = (await readJsonSafe(r)) as ValidateResponse;
+      if (!r.ok) {
+        throw new Error(
+          (data as any)?.message || `Validate failed (${r.status})`
+        );
+      }
+
+      updateCurrent({ result: data, submitted: true, revealed: false });
+    } catch (e: any) {
+      setActionErr(e?.message ?? "Failed to submit");
+    } finally {
+      setBusy(false);
+      submitLockRef.current = false;
     }
-
-    setBusy(true);
-
-    const r = await fetch("/api/practice/validate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: current.key, answer }),
-    });
-
-    const data = (await readJsonSafe(r)) as ValidateResponse;
-    if (!r.ok) {
-      throw new Error((data as any)?.message || `Validate failed (${r.status})`);
-    }
-
-    updateCurrent({ result: data, submitted: true, revealed: false });
-  } catch (e: any) {
-    setActionErr(e?.message ?? "Failed to submit");
-  } finally {
-    setBusy(false);
-    submitLockRef.current = false;
   }
-}
 
   async function revealAnswer() {
-  if (!current || busy) return;
+    if (!current || busy) return;
 
     setBusy(true);
     setActionErr(null);
@@ -674,15 +760,13 @@ async function submitAnswer() {
       const solA = (data as any)?.expected?.solutionA;
       const bExp = (data as any)?.expected?.b;
 
-      // ✅ apply to React state
       updateCurrent({
         result: data,
         revealed: true,
         ...(solA ? { dragA: cloneVec(solA) } : {}),
-        ...(bExp ? { dragB: cloneVec(bExp) } : {}), // dot: keeps b in sync w server
+        ...(bExp ? { dragB: cloneVec(bExp) } : {}),
       });
 
-      // ✅ apply to pad immediately
       if (solA) padRef.current.a = cloneVec(solA) as any;
       if (bExp) padRef.current.b = cloneVec(bExp) as any;
     } catch (e: any) {
@@ -691,76 +775,76 @@ async function submitAnswer() {
       setBusy(false);
     }
   }
-useEffect(() => {
-  const activeTag = () => {
-    const el = document.activeElement as HTMLElement | null;
-    return el?.tagName?.toLowerCase() ?? "";
-  };
 
-  const isTypingForArrows = () => {
-    const tag = activeTag();
-    if (tag === "textarea" || tag === "select") return true;
-    if (tag === "input") return true;
-    return false;
-  };
+  useEffect(() => {
+    const activeTag = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return el?.tagName?.toLowerCase() ?? "";
+    };
 
-  const shouldBlockEnter = () => {
-    const el = document.activeElement as HTMLElement | null;
-    if (!el) return false;
+    const isTypingForArrows = () => {
+      const tag = activeTag();
+      if (tag === "textarea" || tag === "select") return true;
+      if (tag === "input") return true;
+      return false;
+    };
 
-    const tag = el.tagName.toLowerCase();
-    if (tag === "select" || tag === "textarea") return true;
+    const shouldBlockEnter = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return false;
 
-    if (tag === "input") {
-      const t = (el as HTMLInputElement).type;
-      if (t === "checkbox" || t === "radio") return true;
-    }
+      const tag = el.tagName.toLowerCase();
+      if (tag === "select" || tag === "textarea") return true;
 
-    return false;
-  };
+      if (tag === "input") {
+        const t = (el as HTMLInputElement).type;
+        if (t === "checkbox" || t === "radio") return true;
+      }
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (confirmOpen) return;
-    if (phase !== "practice") return;
-    if (busy) return;
-    if (!exercise) return;
-    if (e.repeat) return;
+      return false;
+    };
 
-    if (e.key === "Enter") {
-      if (shouldBlockEnter()) return;
-      if (current?.submitted) return;
-      e.preventDefault();
-      void submitAnswer();
-      return;
-    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (confirmOpen) return;
+      if (phase !== "practice") return;
+      if (busy) return;
+      if (!exercise) return;
+      if (e.repeat) return;
 
-    if (isTypingForArrows()) return;
+      if (e.key === "Enter") {
+        if (shouldBlockEnter()) return;
+        if (current?.submitted) return;
+        e.preventDefault();
+        void submitAnswer();
+        return;
+      }
 
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      goPrev();
-      return;
-    }
-    if (e.key === "ArrowRight") {
-      e.preventDefault();
-      void goNext();
-      return;
-    }
-  };
+      if (isTypingForArrows()) return;
 
-  document.addEventListener("keydown", onKeyDown);
-  return () => document.removeEventListener("keydown", onKeyDown);
-}, [
-  confirmOpen,
-  phase,
-  busy,
-  exercise,
-  current,       // ✅ IMPORTANT
-  submitAnswer,  // ✅ IMPORTANT
-  idx,
-  stack.length,
-  answeredCount,
-]);
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrev();
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        void goNext();
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [
+    confirmOpen,
+    phase,
+    busy,
+    exercise,
+    current,
+    idx,
+    stack.length,
+    answeredCount,
+  ]);
 
   const badge = useMemo(() => {
     if (!exercise) return "";
@@ -777,37 +861,11 @@ useEffect(() => {
       ? "border-rose-300/30 bg-rose-300/10"
       : "border-white/10 bg-white/5";
 
-  // --- VectorPad (2D only) ---
-  const zHeldRef = useRef(false);
-
-  const padRef = useRef<VectorPadState>({
-    mode: "2d",
-    scale: 40,
-    gridStep: 1,
-    snapToGrid: true,
-    showGrid: true,
-    showComponents: true,
-    showAngle: false,
-    showProjection: false,
-    showUnitB: false,
-    showPerp: false,
-    depthMode: false,
-    a: { x: 0, y: 0, z: 0 } as any,
-    b: { x: 2, y: 1, z: 0 } as any,
-  });
-
-  // ✅ keep b fixed from exercise for vector_drag_dot
   useEffect(() => {
     if (!current) return;
 
     padRef.current.mode = "2d";
     padRef.current.a = { ...current.dragA } as any;
-
-    // if (current.exercise.kind === "vector_drag_dot") {
-    //   padRef.current.b = cloneVec(current.exercise.b) as any;
-    // } else {
-    //   padRef.current.b = { ...current.dragB } as any;
-    // }
     padRef.current.b = { ...current.dragB } as any;
 
     padRef.current.showProjection = current.exercise.topic === "projection";
@@ -819,7 +877,7 @@ useEffect(() => {
   const allowBDrag =
     exercise?.kind === "vector_drag_target" ? !exercise.lockB : false;
 
-  // SUMMARY VIEW unchanged ...
+  // SUMMARY VIEW
   if (phase === "summary") {
     const pct = scorePct(correctCount, answeredCount);
     return (
@@ -827,7 +885,7 @@ useEffect(() => {
         <div className="mx-auto max-w-5xl grid gap-4">
           <CongratsCard
             title="Session complete"
-            subtitle={`You finished ${answeredCount}/${SESSION_SIZE} exercises`}
+            subtitle={`You finished ${answeredCount}/${sessionSize} exercises`}
             scoreLine={`${correctCount} correct • ${
               answeredCount - correctCount
             } missed • ${pct}%`}
@@ -905,7 +963,7 @@ useEffect(() => {
               <div className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs text-white/80">
                 You’ll lose progress:{" "}
                 <span className="font-extrabold">
-                  {answeredCount}/{SESSION_SIZE}
+                  {answeredCount}/{sessionSize}
                 </span>
                 .
               </div>
@@ -934,7 +992,6 @@ useEffect(() => {
         </div>
       ) : null}
 
-      {/* ✅ wider left column on large screens + allow wrapping */}
       <div className="mx-auto max-w-5xl grid gap-4 lg:grid-cols-[minmax(320px,440px)_minmax(0,1fr)]">
         {/* LEFT */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
@@ -957,7 +1014,7 @@ useEffect(() => {
                 <div className="mt-2 text-xs text-white/60">
                   Progress:{" "}
                   <span className="font-extrabold text-white/80">
-                    {answeredCount}/{SESSION_SIZE}
+                    {answeredCount}/{sessionSize}
                   </span>{" "}
                   • Correct:{" "}
                   <span className="font-extrabold text-white/80">
@@ -1097,15 +1154,14 @@ useEffect(() => {
             <div className="text-sm font-black">
               {exercise?.title ?? (busy ? "Loading..." : "—")}
             </div>
-<div className="mt-1 text-sm text-white/80 break-words">
-  <MathMarkdown
-    content={exercise?.prompt ?? ""}
-    className="prose prose-invert max-w-none
+            <div className="mt-1 text-sm text-white/80 break-words">
+              <MathMarkdown
+                content={exercise?.prompt ?? ""}
+                className="prose prose-invert max-w-none
                prose-p:my-2 prose-strong:text-white
                prose-code:text-white"
-  />
-</div>
-
+              />
+            </div>
           </div>
 
           <div className="p-4">
@@ -1139,9 +1195,9 @@ useEffect(() => {
                       checked={current.single === o.id}
                       onChange={() => updateCurrent({ single: o.id })}
                     />
-                  <span className="text-sm font-extrabold text-white/85 break-words">
-  <MathMarkdown content={o.text} />
-</span>
+                    <span className="text-sm font-extrabold text-white/85 break-words">
+                      <MathMarkdown content={o.text} />
+                    </span>
                   </label>
                 ))}
               </div>
@@ -1166,22 +1222,21 @@ useEffect(() => {
                           })
                         }
                       />
-                     <span className="text-sm font-extrabold text-white/85 break-words">
-  <MathMarkdown content={o.text}  />
-</span>
+                      <span className="text-sm font-extrabold text-white/85 break-words">
+                        <MathMarkdown content={o.text} />
+                      </span>
                     </label>
                   );
                 })}
               </div>
             ) : exercise.kind === "numeric" ? (
               <div className="grid gap-3">
-              {exercise.hint ? (
-  <MathMarkdown
-    className="prose prose-sm max-w-none"
-    content={exercise.hint}
-  />
-) : null}
-
+                {exercise.hint ? (
+                  <MathMarkdown
+                    className="prose prose-sm max-w-none"
+                    content={exercise.hint}
+                  />
+                ) : null}
 
                 <div className="grid grid-cols-[1fr_140px] items-center gap-2">
                   <div className="text-xs font-extrabold text-white/70">
@@ -1204,6 +1259,7 @@ useEffect(() => {
                   </span>{" "}
                   within tolerance <b>{exercise.tolerance}</b>.
                 </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
                   <div className="font-extrabold text-white/70">Vector Pad</div>
 
@@ -1217,7 +1273,7 @@ useEffect(() => {
                       type="button"
                       onClick={() => {
                         setGridMode("auto");
-                        if (exercise) autoGridForExercise(exercise); // apply immediately
+                        if (exercise) autoGridForExercise(exercise);
                       }}
                       className={`rounded-xl border px-3 py-2 text-xs font-extrabold hover:bg-white/15 ${
                         gridMode === "auto"
@@ -1269,7 +1325,6 @@ useEffect(() => {
                 />
               </div>
             ) : (
-              // ✅ vector_drag_dot
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
                   Drag <b>a</b> so that <b>a · b</b> ≈{" "}
@@ -1284,6 +1339,7 @@ useEffect(() => {
                     </span>
                   </div>
                 </div>
+
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
                   <div className="font-extrabold text-white/70">Vector Pad</div>
 
@@ -1297,7 +1353,7 @@ useEffect(() => {
                       type="button"
                       onClick={() => {
                         setGridMode("auto");
-                        if (exercise) autoGridForExercise(exercise); // apply immediately
+                        if (exercise) autoGridForExercise(exercise);
                       }}
                       className={`rounded-xl border px-3 py-2 text-xs font-extrabold hover:bg-white/15 ${
                         gridMode === "auto"
@@ -1332,7 +1388,6 @@ useEffect(() => {
                   stateRef={padRef}
                   zHeldRef={zHeldRef}
                   handles={{ a: true, b: false }}
-                  // ✅ IMPORTANT: only update a; b stays fixed
                   onPreview={(aNow) => updateCurrent({ dragA: cloneVec(aNow) })}
                   onCommit={(aNow) => updateCurrent({ dragA: cloneVec(aNow) })}
                   previewThrottleMs={80}
@@ -1635,7 +1690,6 @@ function ExpectedSummary({ result }: { result: any }) {
     );
   }
 
-  // fallback
   return (
     <div className={card}>
       <div className="text-white/70">Expected data available.</div>

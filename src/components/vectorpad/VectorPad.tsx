@@ -418,7 +418,8 @@ export default function VectorPad({
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-          canvasEl.focus?.();
+        //   canvasEl.focus?.();
+        (canvasEl as any).focus?.({ preventScroll: true });
 
           s.textFont(
             "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
@@ -845,7 +846,8 @@ overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-          canvasEl.focus?.();
+        //   canvasEl.focus?.();
+        (canvasEl as any).focus?.({ preventScroll: true });
 
           // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
           const originalRemove = (s as any).remove?.bind(s);

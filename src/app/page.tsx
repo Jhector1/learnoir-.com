@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import SpanBasisModule from "@/components/modules/SpanBasisModule";
-import Module0VectorSimulatorP5Hybrid from "../components/Module0VectorSimulatorP5Hybrid";
+import Module0VectorSimulatorP5Hybrid from "@/components/Module0VectorSimulatorP5Hybrid";
 import type { Mode } from "@/lib/math/vec3";
 
 type Tool = "span" | "module0";
@@ -62,9 +62,7 @@ export default function Home() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-xl font-semibold text-white">Linear Algebra Playground</div>
-          <div className="text-sm text-white/60">
-            Pick a tool, then switch between 2D/3D.
-          </div>
+          <div className="text-sm text-white/60">Pick a tool, then switch between 2D/3D.</div>
         </div>
 
         {/* Tool tabs */}
@@ -98,11 +96,9 @@ export default function Home() {
 
       {/* Content */}
       {tool === "span" ? (
-        <SpanBasisModule key={`span-${mode}`} mode={mode} />
+        <SpanBasisModule mode={mode} />
       ) : (
-        // If Module0VectorSimulatorP5Hybrid already has its own mode switch, keep it.
-        // If it accepts a mode prop, pass it and remove its internal switch.
-        <Module0VectorSimulatorP5Hybrid key={`m0-${mode}`}  />
+        <Module0VectorSimulatorP5Hybrid mode={mode} />
       )}
     </div>
   );

@@ -41,7 +41,7 @@ export default function AssignmentsPage() {
     })();
   }, []);
 
-  const start = async (id: string, difficulty: string, topicForSection: string) => {
+  const start = async (id: string, difficulty: string, topicForSection: string, questionCount: number) => {
     const r = await fetch(`/api/assignments/${id}/start`, { method: "POST" });
     const data = await r.json();
     if (!r.ok) {
@@ -50,7 +50,7 @@ export default function AssignmentsPage() {
     }
    
     // ✅ route into your practice runner (add sessionId support there)
-    router.push(`/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}`);
+    router.push(`/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}&questionCount=${questionCount}`);
   };
 
   return (
@@ -111,7 +111,7 @@ export default function AssignmentsPage() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "")}
+                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount??10)}
                       className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15"
                     >
                       Start

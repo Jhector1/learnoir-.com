@@ -1,7 +1,6 @@
-// src/components/Module0VectorSimulatorP5Hybrid.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Mode, Vec3 } from "@/lib/math/vec3";
@@ -18,6 +17,7 @@ import {
   scalarProjOfAonB,
   sub,
 } from "@/lib/math/vec3";
+import { useZHeldRef } from "@/components/vectorpad/useZHeldRef";
 
 type QuestionType = "dot" | "angle" | "scalarProj" | "projX" | "projY" | "projZ";
 type StatusKind = "idle" | "good" | "bad";
@@ -32,8 +32,13 @@ type Question = {
   createdAt: number;
 };
 
-export default function Module0VectorSimulatorP5Hybrid() {
-  const [mode, setMode] = useState<Mode>("2d");
+export default function Module0VectorSimulatorP5Hybrid({
+  mode = "2d",
+}: {
+  mode?: Mode;
+}) {
+  // ✅ Z key tracking shared (deduped)
+  const { zHeldRef, zKeyUI } = useZHeldRef();
 
   // IMPORTANT: match VectorPad clamp range (VectorPad clamps 20..280)
   const [scale, setScale] = useState<number>(40);
@@ -49,8 +54,8 @@ export default function Module0VectorSimulatorP5Hybrid() {
   const [showPerp, setShowPerp] = useState(false);
 
   const [depthMode, setDepthMode] = useState(false);
-  const [zKeyUI, setZKeyUI] = useState(false);
 
+  // UI-only mirrors (VectorPad truth is stateRef.current.a/b)
   const [a, setA] = useState<Vec3>({ x: 3, y: 2, z: 0 });
   const [b, setB] = useState<Vec3>({ x: 2, y: 4, z: 0 });
 
@@ -62,9 +67,9 @@ export default function Module0VectorSimulatorP5Hybrid() {
     msg: "Click “New question”. Use overlays to reason visually, then answer.",
   });
 
-  // shared state for VectorPad
+  // ✅ Single source of truth for VectorPad (DO NOT overwrite object during drag)
   const stateRef = useRef<VectorPadState>({
-    mode, // ✅ include mode
+    mode,
     scale,
     gridStep,
     autoGridStep: true,
@@ -80,81 +85,10 @@ export default function Module0VectorSimulatorP5Hybrid() {
     b,
   });
 
-  const zHeldRef = useRef(false);
-
-  // Z key tracking
+  // Keep ref’s mode + enforce z=0 in 2D ONLY when mode changes (not during drag)
   useEffect(() => {
-    const isZ = (e: KeyboardEvent) => e.code === "KeyZ" || e.key === "z" || e.key === "Z";
+    stateRef.current.mode = mode;
 
-    const down = (e: KeyboardEvent) => {
-      if (!isZ(e)) return;
-      zHeldRef.current = true;
-      setZKeyUI(true);
-    };
-
-    const up = (e: KeyboardEvent) => {
-      if (!isZ(e)) return;
-      zHeldRef.current = false;
-      setZKeyUI(false);
-    };
-
-    const blur = () => {
-      zHeldRef.current = false;
-      setZKeyUI(false);
-    };
-
-    window.addEventListener("keydown", down, true);
-    window.addEventListener("keyup", up, true);
-    document.addEventListener("keydown", down, true);
-    document.addEventListener("keyup", up, true);
-    window.addEventListener("blur", blur);
-
-    return () => {
-      window.removeEventListener("keydown", down, true);
-      window.removeEventListener("keyup", up, true);
-      document.removeEventListener("keydown", down, true);
-      document.removeEventListener("keyup", up, true);
-      window.removeEventListener("blur", blur);
-    };
-  }, []);
-
-  // keep stateRef in sync with React state
-  useEffect(() => {
-    stateRef.current = {
-      ...stateRef.current, // ✅ preserve any future fields
-      mode, // ✅ now actually stored
-      scale,
-      gridStep,
-      autoGridStep: stateRef.current.autoGridStep ?? true,
-      snapToGrid,
-      showGrid,
-      showComponents,
-      showAngle,
-      showProjection,
-      showUnitB,
-      showPerp,
-      depthMode,
-      a,
-      b,
-    };
-  }, [
-    mode,
-    scale,
-    gridStep,
-    snapToGrid,
-    showGrid,
-    showComponents,
-    showAngle,
-    showProjection,
-    showUnitB,
-    showPerp,
-    depthMode,
-    a,
-    b,
-  ]);
-
-  // Keep z = 0 in 2D
-  useEffect(() => {
     if (mode === "2d") {
       const A = { ...stateRef.current.a, z: 0 };
       const B = { ...stateRef.current.b, z: 0 };
@@ -165,6 +99,79 @@ export default function Module0VectorSimulatorP5Hybrid() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  // ✅ Stable callback (VectorPad re-inits p5 if onScaleChange identity changes)
+  const onScaleChange = useCallback((nextScale: number) => {
+    const clamped = clamp(nextScale, 20, 280);
+    setScale(clamped);
+    stateRef.current.scale = clamped;
+  }, []);
+
+  // ---- UI controls patch BOTH React state + stateRef (no sync effect) ----
+  const setSnapToGridBoth = (v: boolean) => {
+    setSnapToGrid(v);
+    stateRef.current.snapToGrid = v;
+  };
+  const setGridStepBoth = (v: number) => {
+    setGridStep(v);
+    stateRef.current.gridStep = v;
+  };
+  const setShowGridBoth = (v: boolean) => {
+    setShowGrid(v);
+    stateRef.current.showGrid = v;
+  };
+  const setShowComponentsBoth = (v: boolean) => {
+    setShowComponents(v);
+    stateRef.current.showComponents = v;
+  };
+  const setShowAngleBoth = (v: boolean) => {
+    setShowAngle(v);
+    stateRef.current.showAngle = v;
+  };
+  const setShowProjectionBoth = (v: boolean) => {
+    setShowProjection(v);
+    stateRef.current.showProjection = v;
+  };
+  const setShowUnitBBoth = (v: boolean) => {
+    setShowUnitB(v);
+    stateRef.current.showUnitB = v;
+  };
+  const setShowPerpBoth = (v: boolean) => {
+    setShowPerp(v);
+    stateRef.current.showPerp = v;
+  };
+  const setDepthModeBoth = (v: boolean) => {
+    setDepthMode(v);
+    stateRef.current.depthMode = v;
+  };
+
+  // ✅ Smooth drag UI updates (RAF) without writing back into stateRef
+  const latestPreview = useRef<{ a: Vec3; b: Vec3 } | null>(null);
+  const previewRaf = useRef<number | null>(null);
+
+  const onPreviewUI = useCallback((na: Vec3, nb: Vec3) => {
+    latestPreview.current = { a: na, b: nb };
+    if (previewRaf.current != null) return;
+
+    previewRaf.current = requestAnimationFrame(() => {
+      previewRaf.current = null;
+      const p = latestPreview.current;
+      if (!p) return;
+      setA(p.a);
+      setB(p.b);
+    });
+  }, []);
+
+  const onCommitUI = useCallback((na: Vec3, nb: Vec3) => {
+    setA(na);
+    setB(nb);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewRaf.current != null) cancelAnimationFrame(previewRaf.current);
+    };
+  }, []);
 
   const derived = useMemo(() => {
     const A = a;
@@ -374,8 +381,14 @@ export default function Module0VectorSimulatorP5Hybrid() {
       ? "border-rose-300/30 bg-rose-300/10 text-white/90"
       : "border-white/10 bg-black/20 text-white/70";
 
-  const aLabel = mode === "2d" ? `(${fmt2(a.x)}, ${fmt2(a.y)})` : `(${fmt2(a.x)}, ${fmt2(a.y)}, ${fmt2(a.z)})`;
-  const bLabel = mode === "2d" ? `(${fmt2(b.x)}, ${fmt2(b.y)})` : `(${fmt2(b.x)}, ${fmt2(b.y)}, ${fmt2(b.z)})`;
+  const aLabel =
+    mode === "2d"
+      ? `(${fmt2(a.x)}, ${fmt2(a.y)})`
+      : `(${fmt2(a.x)}, ${fmt2(a.y)}, ${fmt2(a.z)})`;
+  const bLabel =
+    mode === "2d"
+      ? `(${fmt2(b.x)}, ${fmt2(b.y)})`
+      : `(${fmt2(b.x)}, ${fmt2(b.y)}, ${fmt2(b.z)})`;
 
   const killEvent = (e: any) => {
     e.stopPropagation?.();
@@ -410,51 +423,35 @@ export default function Module0VectorSimulatorP5Hybrid() {
                 </>
               ) : (
                 <>
-                  Orbit the camera. Drag the spheres to move vectors. Hold{" "}
-                  <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">Z</span>{" "}
+                  Orbit the camera. Drag spheres. Hold{" "}
+                  <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
+                    Z
+                  </span>{" "}
                   while dragging (or enable Depth mode) to change depth.
                 </>
               )}
             </p>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                className={`rounded-xl border px-3 py-2 text-xs font-extrabold active:translate-y-[1px] ${
-                  mode === "2d"
-                    ? "border-emerald-300/30 bg-emerald-300/10 hover:bg-emerald-300/15"
-                    : "border-white/10 bg-white/10 hover:bg-white/15"
-                }`}
-                onClick={() => setMode("2d")}
-              >
-                2D Mode
-              </button>
-              <button
-                className={`rounded-xl border px-3 py-2 text-xs font-extrabold active:translate-y-[1px] ${
-                  mode === "3d"
-                    ? "border-emerald-300/30 bg-emerald-300/10 hover:bg-emerald-300/15"
-                    : "border-white/10 bg-white/10 hover:bg-white/15"
-                }`}
-                onClick={() => setMode("3d")}
-              >
-                3D Mode
-              </button>
-            </div>
           </div>
 
           <div className="border-b border-white/10 p-3">
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">{mode === "2d" ? "Scale (px per unit)" : "Visual scale"}</div>
+              <div className="text-xs font-extrabold text-white/70">
+                {mode === "2d" ? "Scale (px per unit)" : "Visual scale"}
+              </div>
               <div className="font-extrabold tabular-nums">{scale}</div>
             </div>
 
-            {/* ✅ match VectorPad's clamp range */}
             <input
               className="mt-2 w-full"
               type="range"
               min={20}
               max={280}
               value={scale}
-              onChange={(e) => setScale(Number(e.target.value))}
+              onChange={(e) => {
+                const v = clamp(Number(e.target.value), 20, 280);
+                setScale(v);
+                stateRef.current.scale = v;
+              }}
             />
 
             <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
@@ -463,7 +460,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
                 type="checkbox"
                 className="scale-110 accent-blue-500"
                 checked={snapToGrid}
-                onChange={(e) => setSnapToGrid(e.target.checked)}
+                onChange={(e) => setSnapToGridBoth(e.target.checked)}
               />
             </div>
 
@@ -475,7 +472,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
                     type="checkbox"
                     className="scale-110 accent-blue-500"
                     checked={depthMode}
-                    onChange={(e) => setDepthMode(e.target.checked)}
+                    onChange={(e) => setDepthModeBoth(e.target.checked)}
                   />
                 </div>
                 <div className="mt-2 text-xs text-white/60">
@@ -495,7 +492,7 @@ export default function Module0VectorSimulatorP5Hybrid() {
                 min={0.5}
                 step={0.5}
                 value={gridStep}
-                onChange={(e) => setGridStep(Number(e.target.value))}
+                onChange={(e) => setGridStepBoth(Number(e.target.value))}
               />
             </div>
 
@@ -531,12 +528,12 @@ export default function Module0VectorSimulatorP5Hybrid() {
           <div className="border-b border-white/10 p-3">
             <div className="mb-2 text-sm font-black">Overlays</div>
             <div className="grid grid-cols-2 gap-2">
-              <Toggle label="Show grid + axes" checked={showGrid} onChange={setShowGrid} />
-              <Toggle label="Show components" checked={showComponents} onChange={setShowComponents} />
-              <Toggle label="Show angle θ" checked={showAngle} onChange={setShowAngle} />
-              <Toggle label="Show projection" checked={showProjection} onChange={setShowProjection} />
-              <Toggle label="Show unit vector of b" checked={showUnitB} onChange={setShowUnitB} />
-              <Toggle label="Show perpendicular part" checked={showPerp} onChange={setShowPerp} />
+              <Toggle label="Show grid + axes" checked={showGrid} onChange={setShowGridBoth} />
+              <Toggle label="Show components" checked={showComponents} onChange={setShowComponentsBoth} />
+              <Toggle label="Show angle θ" checked={showAngle} onChange={setShowAngleBoth} />
+              <Toggle label="Show projection" checked={showProjection} onChange={setShowProjectionBoth} />
+              <Toggle label="Show unit vector of b" checked={showUnitB} onChange={setShowUnitBBoth} />
+              <Toggle label="Show perpendicular part" checked={showPerp} onChange={setShowPerpBoth} />
             </div>
           </div>
 
@@ -655,16 +652,10 @@ export default function Module0VectorSimulatorP5Hybrid() {
               mode={mode}
               stateRef={stateRef}
               zHeldRef={zHeldRef}
-              onScaleChange={setScale} // ✅ IMPORTANT: wheel zoom updates slider
-              onPreview={(na, nb) => {
-                setA(na);
-                setB(nb);
-              }}
-              previewThrottleMs={120}
-              onCommit={(na, nb) => {
-                setA(na);
-                setB(nb);
-              }}
+              onScaleChange={onScaleChange} // ✅ stable, no remounts
+              onPreview={onPreviewUI}
+              onCommit={onCommitUI}
+              previewThrottleMs={16} // ✅ near-60fps UI mirror
               className="relative h-full w-full min-h-[520px]"
             />
           </div>
@@ -680,9 +671,11 @@ export default function Module0VectorSimulatorP5Hybrid() {
                   </>
                 ) : (
                   <>
-                    Orbit: drag on empty space. Pick a sphere to drag. Hold{" "}
-                    <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">Z</span>{" "}
-                    while dragging (or enable Depth mode) to move along depth (z).
+                    Orbit: drag empty space. Pick sphere to drag. Hold{" "}
+                    <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
+                      Z
+                    </span>{" "}
+                    (or Depth mode) to move along z.
                   </>
                 )}
               </p>
