@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 const ADMINS = new Set(
@@ -8,7 +8,7 @@ const ADMINS = new Set(
     .filter(Boolean)
 );
 
-export async function requireAdmin() {
+export async function requireAdmin(req: Request) {
   const session = await auth();
   const email = session?.user?.email?.toLowerCase();
 
