@@ -1,109 +1,43 @@
 // src/components/review/sketches/ProjectionSketch.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import MathMarkdown from "@/components/math/MathMarkdown";
+import VectorPad from "@/components/vectorpad/VectorPad";
+import type { VectorPadState } from "@/components/vectorpad/types";
+import type { Mode, Vec3 } from "@/lib/math/vec3";
+import { projOfAonB } from "@/lib/math/vec3";
 import { fmtNum, fmtVec2Latex } from "@/lib/review/latex";
 
 type Vec2 = { x: number; y: number };
 
-// ---------- math helpers ----------
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
-}
-function dot(a: Vec2, b: Vec2) {
-  return a.x * b.x + a.y * b.y;
-}
-function mag(v: Vec2) {
-  return Math.hypot(v.x, v.y);
-}
-function sub(a: Vec2, b: Vec2): Vec2 {
-  return { x: a.x - b.x, y: a.y - b.y };
-}
-function mul(v: Vec2, s: number): Vec2 {
-  return { x: v.x * s, y: v.y * s };
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
 }
 
-// ---------- RAF drag (no snap) ----------
-function usePointerDragRAF(opts?: { deadzonePx?: number }) {
-  const dragging = useRef(false);
-  const last = useRef<{ x: number; y: number } | null>(null);
-  const raf = useRef<number | null>(null);
-  const deadzone = opts?.deadzonePx ?? 0;
-
-  const onMoveRef = useRef<((clientX: number, clientY: number) => void) | null>(
-    null
-  );
-
-  useEffect(() => {
-    const flush = () => {
-      raf.current = null;
-      if (!dragging.current || !last.current) return;
-      onMoveRef.current?.(last.current.x, last.current.y);
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!dragging.current) return;
-
-      if (last.current && deadzone > 0) {
-        const dx = e.clientX - last.current.x;
-        const dy = e.clientY - last.current.y;
-        if (dx * dx + dy * dy < deadzone * deadzone) return;
-      }
-
-      last.current = { x: e.clientX, y: e.clientY };
-      if (raf.current == null) raf.current = requestAnimationFrame(flush);
-    };
-
-    const stopAll = () => {
-      dragging.current = false;
-      last.current = null;
-      if (raf.current != null) cancelAnimationFrame(raf.current);
-      raf.current = null;
-    };
-
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    window.addEventListener("pointerup", stopAll);
-    window.addEventListener("pointercancel", stopAll);
-
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", stopAll);
-      window.removeEventListener("pointercancel", stopAll);
-      if (raf.current != null) cancelAnimationFrame(raf.current);
-    };
-  }, [deadzone]);
-
-  return {
-    setOnMove(fn: (clientX: number, clientY: number) => void) {
-      onMoveRef.current = fn;
-    },
-    start(seedX?: number, seedY?: number) {
-      dragging.current = true;
-      if (typeof seedX === "number" && typeof seedY === "number") {
-        last.current = { x: seedX, y: seedY };
-      }
-    },
-    stop() {
-      dragging.current = false;
-      last.current = null;
-      if (raf.current != null) cancelAnimationFrame(raf.current);
-      raf.current = null;
-    },
-  };
+function dot2(a: Vec3, b: Vec3) {
+  return a.x * b.x + a.y * b.y + (a.z ?? 0) * (b.z ?? 0);
 }
 
-function ArrowHead({
-  from,
-  to,
-  size,
-  color,
-}: {
-  from: { x: number; y: number };
-  to: { x: number; y: number };
-  size: number;
-  color: string;
-}) {
+function mul(v: Vec3, s: number): Vec3 {
+  return { x: v.x * s, y: v.y * s, z: (v.z ?? 0) * s };
+}
+
+function sub(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: (a.z ?? 0) - (b.z ?? 0) };
+}
+
+function len2(v: Vec3) {
+  return dot2(v, v);
+}
+
+function arrowHead2D(
+  s: any,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  col: string,
+  size = 12
+) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const L = Math.hypot(dx, dy) || 1;
@@ -121,51 +55,11 @@ function ArrowHead({
     y: to.y - uy * size + py * (size * 0.55),
   };
 
-  return (
-    <polygon
-      points={`${to.x},${to.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`}
-      fill={color}
-      opacity={0.95}
-      style={{ pointerEvents: "none" }} // ✅ never steal touch
-    />
-  );
-}
-
-function Handle({
-  tip,
-  fill,
-  stroke,
-  onStart,
-  onStop,
-}: {
-  tip: { x: number; y: number };
-  fill: string;
-  stroke: string;
-  onStart: (e: React.PointerEvent<SVGGElement>) => void;
-  onStop: () => void;
-}) {
-  return (
-    <g
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        onStart(e);
-      }}
-      onPointerUp={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onStop();
-      }}
-      onPointerCancel={onStop}
-      style={{ cursor: "grab" }}
-    >
-      <circle cx={tip.x} cy={tip.y} r={10} fill={fill} stroke={stroke} strokeWidth={2} />
-      <circle cx={tip.x} cy={tip.y} r={3} fill="rgba(255,255,255,0.8)" />
-      {/* bigger invisible hit target */}
-      <circle cx={tip.x} cy={tip.y} r={18} fill="transparent" />
-    </g>
-  );
+  s.push();
+  s.noStroke();
+  s.fill(col);
+  s.triangle(to.x, to.y, p1.x, p1.y, p2.x, p2.y);
+  s.pop();
 }
 
 export default function ProjectionSketch({
@@ -174,265 +68,376 @@ export default function ProjectionSketch({
   grid = 1,
   worldExtent = 6,
 }: {
-  initialT?: Vec2; // target vector
-  initialR?: Vec2; // reference vector
-  grid?: number;
-  worldExtent?: number;
+  initialT?: Vec2; // target vector (t)
+  initialR?: Vec2; // reference vector (r)
+  grid?: number; // world grid step when autoGridStep=false
+  worldExtent?: number; // clamp vectors to [-extent, extent]
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const mode: Mode = "2d";
+  const zHeldRef = useRef(false);
 
-  const [t, setT] = useState<Vec2>(initialT);
-  const [r, setR] = useState<Vec2>(initialR);
+  // ---- VectorPad state (source of truth for p5) ----
+  const stateRef = useRef<VectorPadState>({
+    a: { x: initialT.x, y: initialT.y, z: 0 }, // a = t
+    b: { x: initialR.x, y: initialR.y, z: 0 }, // b = r
 
-  const W = 720;
-  const H = 420;
-  const pad = 18;
-  const ext = worldExtent;
+    // visuals/interaction
+    scale: 26,
+    showGrid: true,
+    snapToGrid: true,
+    autoGridStep: false,
+    gridStep: grid,
 
-  const scale = useMemo(() => (Math.min(W, H) - pad * 2) / (2 * ext), [W, H, pad, ext]);
-  const origin = useMemo(() => ({ x: W / 2, y: H / 2 }), [W, H]);
+    showComponents: false,
+    showAngle: false,
 
-  // world -> svg(viewBox)
-  const worldToScreen = (p: Vec2) => ({ x: origin.x + p.x * scale, y: origin.y - p.y * scale });
+    showProjection: true,
+    showPerp: true,
+    showUnitB: false,
 
-  // svg(viewBox) -> world (unclamped)
-  const screenToWorldUnclamped = (sx: number, sy: number) => ({
-    x: (sx - origin.x) / scale,
-    y: -(sy - origin.y) / scale,
-  });
+    depthMode: false,
+  } as VectorPadState);
 
-  const clampWorld = (p: Vec2) => ({
-    x: clamp(p.x, -ext, ext),
-    y: clamp(p.y, -ext, ext),
-  });
-
-  // client -> svg(viewBox)
-  const clientToSvg = (clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: clientX, y: clientY };
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return { x: clientX, y: clientY };
-    const local = pt.matrixTransform(ctm.inverse());
-    return { x: local.x, y: local.y };
-  };
-
-  const tTip = worldToScreen(t);
-  const rTip = worldToScreen(r);
-
-  // --- Projection and decomposition ---
-  const tDotr = dot(t, r);
-  const rDotr = dot(r, r);
-  const alpha = rDotr === 0 ? 0 : tDotr / rDotr;
-
-  const tPar = rDotr === 0 ? { x: 0, y: 0 } : mul(r, alpha);
-  const tPerp = sub(t, tPar);
-
-  const tParTip = worldToScreen(tPar);
-  const tPerpTip = worldToScreen(tPerp);
-
-  const checkVal = dot(tPerp, r);
-  const checkLabel =
-    Math.abs(checkVal) < 1e-6 ? String.raw`\approx 0\ \text{(perpendicular ✅)}` : String.raw`= ${fmtNum(checkVal, 3)}\ \text{(not } \perp\text{)}`;
-
-  // --- drag: offset in WORLD coords (unclamped pointer world) ---
-  const tWorldOffset = useRef<Vec2>({ x: 0, y: 0 });
-  const rWorldOffset = useRef<Vec2>({ x: 0, y: 0 });
-
-  const dragT = usePointerDragRAF();
-  const dragR = usePointerDragRAF();
-
-  useEffect(() => {
-    dragT.setOnMove((cx, cy) => {
-      const s = clientToSvg(cx, cy);
-      const pWorld = screenToWorldUnclamped(s.x, s.y);
-      const next = { x: pWorld.x + tWorldOffset.current.x, y: pWorld.y + tWorldOffset.current.y };
-      setT(clampWorld(next));
-    });
-
-    dragR.setOnMove((cx, cy) => {
-      const s = clientToSvg(cx, cy);
-      const pWorld = screenToWorldUnclamped(s.x, s.y);
-      const next = { x: pWorld.x + rWorldOffset.current.x, y: pWorld.y + rWorldOffset.current.y };
-      setR(clampWorld(next));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // ---- UI mirror (so MathMarkdown updates while dragging) ----
+  const [t, setT] = useState<Vec3>({ ...stateRef.current.a });
+  const [r, setR] = useState<Vec3>({ ...stateRef.current.b });
+  const [scale, setScale] = useState<number>(stateRef.current.scale);
+  const [, bump] = useState(0); // re-render for toggles (since toggles live in a ref)
+  const handles = useMemo(() => ({ a: true, b: true }), []);
+  const handleScaleChange = useCallback((next: number) => {
+    setScale(next);
   }, []);
 
-  const gridLines = useMemo(() => {
-    const lines: { x1: number; y1: number; x2: number; y2: number; thick?: boolean }[] = [];
-    for (let i = -ext; i <= ext; i += grid) {
-      const thick = i === 0;
-      const v1 = worldToScreen({ x: i, y: -ext });
-      const v2 = worldToScreen({ x: i, y: ext });
-      lines.push({ x1: v1.x, y1: v1.y, x2: v2.x, y2: v2.y, thick });
+  const clampWorld = useCallback(
+    (v: Vec3): Vec3 => ({
+      x: clamp(v.x, -worldExtent, worldExtent),
+      y: clamp(v.y, -worldExtent, worldExtent),
+      z: 0,
+    }),
+    [worldExtent]
+  );
 
-      const h1 = worldToScreen({ x: -ext, y: i });
-      const h2 = worldToScreen({ x: ext, y: i });
-      lines.push({ x1: h1.x, y1: h1.y, x2: h2.x, y2: h2.y, thick });
-    }
-    return lines;
-  }, [ext, grid, scale]);
+  const onPreview = useCallback(
+    (nextA: Vec3, nextB: Vec3) => {
+      const A = clampWorld(nextA);
+      const B = clampWorld(nextB);
+
+      // keep VectorPad drawing clamped values
+      stateRef.current.a = A;
+      stateRef.current.b = B;
+
+      setT(A);
+      setR(B);
+    },
+    [clampWorld]
+  );
+
+  const onCommit = useCallback(
+    (nextA: Vec3, nextB: Vec3) => {
+      const A = clampWorld(nextA);
+      const B = clampWorld(nextB);
+
+      stateRef.current.a = A;
+      stateRef.current.b = B;
+
+      setT(A);
+      setR(B);
+    },
+    [clampWorld]
+  );
+
+  // ---- math ----
+  const tDotr = useMemo(() => dot2(t, r), [t, r]);
+  const rDotr = useMemo(() => len2(r), [r]);
+  const alpha = useMemo(
+    () => (rDotr === 0 ? 0 : tDotr / rDotr),
+    [tDotr, rDotr]
+  );
+
+  const tPar = useMemo(
+    () => (rDotr === 0 ? { x: 0, y: 0, z: 0 } : mul(r, alpha)),
+    [r, rDotr, alpha]
+  );
+  const tPerp = useMemo(() => sub(t, tPar), [t, tPar]);
+
+  const checkVal = useMemo(() => dot2(tPerp, r), [tPerp, r]);
+  const overlay2D = useCallback(
+    ({
+      s,
+      origin,
+      worldToScreen2,
+    }: {
+      s: any; // p5
+      W: number;
+      H: number;
+      origin: () => { x: number; y: number };
+      worldToScreen2: (v: Vec3) => { x: number; y: number };
+    }) => {
+      const st = stateRef.current;
+
+      // A = t (target), B = r (reference)
+      const A = st.a;
+      const B = st.b;
+
+      const rDotrLocal = dot2(B, B);
+      const tDotrLocal = dot2(A, B);
+      const alphaLocal = rDotrLocal === 0 ? 0 : tDotrLocal / rDotrLocal;
+
+      const pr =
+        rDotrLocal === 0 ? ({ x: 0, y: 0, z: 0 } as Vec3) : mul(B, alphaLocal);
+      const perp = sub(A, pr);
+
+      const o = origin();
+      const prTip = worldToScreen2(pr);
+      const perpTip = worldToScreen2(perp);
+
+      // ---- draw t_perp from origin (purple dashed) ----
+      s.push();
+
+      const ctx = s.drawingContext as CanvasRenderingContext2D;
+
+      s.stroke("rgba(167,139,250,0.92)");
+      s.strokeWeight(4);
+
+      ctx.save();
+      ctx.setLineDash([6, 5]);
+      s.line(o.x, o.y, perpTip.x, perpTip.y);
+      ctx.restore();
+
+      arrowHead2D(s, o, perpTip, "rgba(167,139,250,0.92)", 12);
+
+      // ---- labels ----
+      s.noStroke();
+      s.textSize(12);
+      s.textAlign(s.LEFT, s.CENTER);
+
+      // t_perp label
+      s.fill("rgba(255,255,255,0.85)");
+      s.text("t⊥r", perpTip.x + 10, perpTip.y);
+
+      // alpha label near projection tip
+      s.fill("rgba(250,204,21,0.95)");
+      const aLabel =
+        rDotrLocal === 0 ? "α=undef" : `α=${fmtNum(alphaLocal, 3)}`;
+      s.text(aLabel, prTip.x + 10, prTip.y + 14);
+
+      s.pop();
+    },
+    [] // ✅ stable (reads live values from stateRef.current)
+  );
 
   const hud = useMemo(() => {
     const tLatex = fmtVec2Latex(Number(fmtNum(t.x, 2)), Number(fmtNum(t.y, 2)));
     const rLatex = fmtVec2Latex(Number(fmtNum(r.x, 2)), Number(fmtNum(r.y, 2)));
-    const parLatex = fmtVec2Latex(Number(fmtNum(tPar.x, 2)), Number(fmtNum(tPar.y, 2)));
-    const perpLatex = fmtVec2Latex(Number(fmtNum(tPerp.x, 2)), Number(fmtNum(tPerp.y, 2)));
-    const alphaLabel = rDotr === 0 ? String.raw`\text{undefined (}\vec r=\vec 0\text{)}` : fmtNum(alpha, 3);
+    const parLatex = fmtVec2Latex(
+      Number(fmtNum(tPar.x, 2)),
+      Number(fmtNum(tPar.y, 2))
+    );
+    const perpLatex = fmtVec2Latex(
+      Number(fmtNum(tPerp.x, 2)),
+      Number(fmtNum(tPerp.y, 2))
+    );
 
-    return String.raw`
-**Projection + decomposition**
+    const alphaLabel =
+      rDotr === 0
+        ? String.raw`\text{undefined (}\vec r=\vec 0\text{)}`
+        : fmtNum(alpha, 3);
 
-Drag the blue handle for \(\vec t\) and green handle for \(\vec r\).
+    const checkLabel =
+      Math.abs(checkVal) < 1e-6
+        ? String.raw`\approx 0\ \text{(perpendicular ✅)}`
+        : String.raw`= ${fmtNum(checkVal, 3)}\ \text{(not } \perp\text{)}`;
+
+return String.raw`
+**Projection + decomposition (VectorPad)**
+
+Drag **blue** ($\vec t$) and **pink** ($\vec r$).
 
 $$
-\vec t = ${tLatex},
+\vec t = ${tLatex}
 \qquad
 \vec r = ${rLatex}
 $$
 
-- Scalar:
-  $$
-  \alpha = \frac{\vec t\cdot \vec r}{\vec r\cdot \vec r} = ${alphaLabel}
-  $$
+**Dot + norm**
 
-- Parallel component:
-  $$
-  \vec t_{\parallel \vec r} = \alpha\,\vec r = ${parLatex}
-  $$
+$$
+\vec t\cdot \vec r = ${fmtNum(tDotr, 3)}
+\qquad
+\vec r\cdot \vec r = ${fmtNum(rDotr, 3)}
+$$
 
-- Perpendicular component:
-  $$
-  \vec t_{\perp \vec r} = \vec t - \vec t_{\parallel \vec r} = ${perpLatex}
-  $$
+**Scalar (projection coefficient)**
 
-- Check:
-  $$
-  \vec t_{\perp \vec r}\cdot \vec r\; ${checkLabel}
-  $$
+$$
+\alpha=\frac{\vec t\cdot \vec r}{\vec r\cdot \vec r} = ${alphaLabel}
+$$
 
-> Dashed yellow is \(\vec t_{\parallel \vec r}\). Dashed purple is \(\vec t_{\perp \vec r}\).
+**Parallel component**
+
+$$
+\vec t_{\parallel \vec r}=\alpha\,\vec r = ${parLatex}
+$$
+
+**Perpendicular component**
+
+$$
+\vec t_{\perp \vec r}=\vec t-\vec t_{\parallel \vec r} = ${perpLatex}
+$$
+
+**Check**
+
+$$
+\vec t_{\perp \vec r}\cdot \vec r\; ${checkLabel}
+$$
+
+> Yellow is $\vec t_{\parallel \vec r}$. Purple is $\vec t_{\perp \vec r}$.
 `.trim();
-  }, [t, r, tPar, tPerp, alpha, rDotr, checkLabel]);
+
+  }, [t, r, tPar, tPerp, alpha, rDotr, tDotr, checkVal]);
+
+  // ---- compact controls (mutate ref + bump) ----
+  const toggle = (key: keyof VectorPadState) => {
+    (stateRef.current as any)[key] = !(stateRef.current as any)[key];
+    bump((x) => x + 1);
+  };
+
+  const setGridStep = (next: number) => {
+    stateRef.current.gridStep = next;
+    bump((x) => x + 1);
+  };
+
+  const reset = () => {
+    const A = clampWorld({ x: initialT.x, y: initialT.y, z: 0 });
+    const B = clampWorld({ x: initialR.x, y: initialR.y, z: 0 });
+
+    stateRef.current.a = A;
+    stateRef.current.b = B;
+
+    stateRef.current.scale = 52;
+    setScale(52);
+
+    setT(A);
+    setR(B);
+    bump((x) => x + 1);
+  };
 
   return (
-    <div className="w-full h-full select-none" style={{ touchAction: "none" }}>
-      <div className="grid gap-3 md:grid-cols-[1fr_320px]">
+    <div className="w-full select-none">
+      <div className="grid gap-3 md:grid-cols-[1fr_300px]">
+        {/* LEFT: smaller pad + compact controls */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${W} ${H}`}>
-            <rect x="0" y="0" width={W} height={H} fill="rgba(255,255,255,0.02)" />
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => toggle("showGrid")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Grid: {stateRef.current.showGrid ? "ON" : "off"}
+            </button>
 
-            {/* grid */}
-            <g>
-              {gridLines.map((l, i) => (
-                <line
-                  key={i}
-                  x1={l.x1}
-                  y1={l.y1}
-                  x2={l.x2}
-                  y2={l.y2}
-                  stroke="rgba(255,255,255,0.08)"
-                  strokeWidth={l.thick ? 1.6 : 1}
-                />
-              ))}
-            </g>
+            <button
+              onClick={() => toggle("snapToGrid")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Snap: {stateRef.current.snapToGrid ? "ON" : "off"}
+            </button>
 
-            {/* r (reference) */}
-            <line
-              x1={origin.x}
-              y1={origin.y}
-              x2={rTip.x}
-              y2={rTip.y}
-              stroke="rgba(52,211,153,0.95)"
-              strokeWidth={3}
-              strokeLinecap="round"
-            />
-            <ArrowHead from={origin} to={rTip} size={10} color="rgba(52,211,153,0.95)" />
-            <Handle
-              tip={rTip}
-              fill="rgba(52,211,153,0.22)"
-              stroke="rgba(52,211,153,0.95)"
-              onStart={(e) => {
-                const s = clientToSvg(e.clientX, e.clientY);
-                const pWorld = screenToWorldUnclamped(s.x, s.y);
-                rWorldOffset.current = { x: r.x - pWorld.x, y: r.y - pWorld.y };
-                dragR.start(e.clientX, e.clientY);
+            <button
+              onClick={() => toggle("autoGridStep")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Auto step: {stateRef.current.autoGridStep ? "ON" : "off"}
+            </button>
+
+            <button
+              onClick={() => toggle("showAngle")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Angle: {stateRef.current.showAngle ? "ON" : "off"}
+            </button>
+
+            <button
+              onClick={() => toggle("showComponents")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Components: {stateRef.current.showComponents ? "ON" : "off"}
+            </button>
+
+            <button
+              onClick={() => toggle("showUnitB")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              ûᵣ: {stateRef.current.showUnitB ? "ON" : "off"}
+            </button>
+
+            <button
+              onClick={reset}
+              className="ml-auto rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              Reset
+            </button>
+          </div>
+
+          {/* only relevant when autoGridStep is off */}
+          {!stateRef.current.autoGridStep && (
+            <div className="mb-3 flex items-center gap-3">
+              <div className="text-xs text-white/70">Grid step</div>
+              <input
+                type="range"
+                min={0.25}
+                max={2}
+                step={0.25}
+                value={stateRef.current.gridStep}
+                onChange={(e) => setGridStep(Number(e.target.value))}
+                className="w-48"
+              />
+              <div className="text-xs text-white/70 w-12">
+                {fmtNum(stateRef.current.gridStep, 2)}
+              </div>
+            </div>
+          )}
+
+          <div className="mb-3 flex items-center gap-3">
+            <div className="text-xs text-white/70">Zoom</div>
+            <input
+              type="range"
+              min={20}
+              max={140}
+              step={2}
+              value={scale}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                stateRef.current.scale = next;
+                setScale(next);
               }}
-              onStop={dragR.stop}
+              className="w-64"
             />
+            <div className="text-xs text-white/70 w-12">{fmtNum(scale, 2)}</div>
+          </div>
 
-            {/* t (target) */}
-            <line
-              x1={origin.x}
-              y1={origin.y}
-              x2={tTip.x}
-              y2={tTip.y}
-              stroke="rgba(56,189,248,0.95)"
-              strokeWidth={3}
-              strokeLinecap="round"
+          {/* Smaller pad */}
+          <div className="relative h-[320px] w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
+            <VectorPad
+              mode={mode}
+              stateRef={stateRef}
+              zHeldRef={zHeldRef}
+              handles={handles}
+              previewThrottleMs={60}
+              onPreview={onPreview}
+              onCommit={onCommit}
+              onScaleChange={handleScaleChange}
+              className="absolute inset-0"
+              overlay2D={overlay2D}
             />
-            <ArrowHead from={origin} to={tTip} size={10} color="rgba(56,189,248,0.95)" />
-            <Handle
-              tip={tTip}
-              fill="rgba(56,189,248,0.22)"
-              stroke="rgba(56,189,248,0.95)"
-              onStart={(e) => {
-                const s = clientToSvg(e.clientX, e.clientY);
-                const pWorld = screenToWorldUnclamped(s.x, s.y);
-                tWorldOffset.current = { x: t.x - pWorld.x, y: t.y - pWorld.y };
-                dragT.start(e.clientX, e.clientY);
-              }}
-              onStop={dragT.stop}
-            />
-
-            {/* t_parallel_r (projection onto r) */}
-            <line
-              x1={origin.x}
-              y1={origin.y}
-              x2={tParTip.x}
-              y2={tParTip.y}
-              stroke="rgba(250,204,21,0.92)"
-              strokeWidth={3}
-              strokeLinecap="round"
-              strokeDasharray="6 5"
-              opacity={0.95}
-            />
-            <ArrowHead from={origin} to={tParTip} size={10} color="rgba(250,204,21,0.92)" />
-
-            {/* t_perp_r */}
-            <line
-              x1={origin.x}
-              y1={origin.y}
-              x2={tPerpTip.x}
-              y2={tPerpTip.y}
-              stroke="rgba(167,139,250,0.92)"
-              strokeWidth={3}
-              strokeLinecap="round"
-              strokeDasharray="6 5"
-              opacity={0.9}
-            />
-            <ArrowHead from={origin} to={tPerpTip} size={10} color="rgba(167,139,250,0.92)" />
-
-            {/* connector: from tPar to t */}
-            <line
-              x1={tParTip.x}
-              y1={tParTip.y}
-              x2={tTip.x}
-              y2={tTip.y}
-              stroke="rgba(167,139,250,0.55)"
-              strokeWidth={2}
-              strokeLinecap="round"
-              opacity={0.9}
-              style={{ pointerEvents: "none" }}
-            />
-          </svg>
+          </div>
         </div>
 
+        {/* RIGHT: math panel */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <MathMarkdown className="text-sm text-white/80 [&_.katex]:text-white/90" content={hud} />
+          <MathMarkdown
+            className="text-sm text-white/80 [&_.katex]:text-white/90"
+            content={hud}
+          />
         </div>
       </div>
     </div>

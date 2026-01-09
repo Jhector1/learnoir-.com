@@ -24,7 +24,7 @@ export default function SketchHost({ sketchId, props, height }: { sketchId: stri
     );
   }
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden" style={{ height }}>
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidmden">
       <Cmp {...props} />
     </div>
   );

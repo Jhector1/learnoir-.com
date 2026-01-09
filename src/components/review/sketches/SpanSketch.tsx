@@ -1,12 +1,19 @@
-// src/components/review/sketches/SpanSketch.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Vec3, Mode } from "@/lib/math/vec3";
 import MathMarkdown from "@/components/math/MathMarkdown";
 import { fmtNum, fmtVec2Latex } from "@/lib/review/latex";
+
+type Overlay2DArgs = {
+  s: any;
+  W: number;
+  H: number;
+  origin: () => { x: number; y: number };
+  worldToScreen2: (v: Vec3) => { x: number; y: number };
+};
 
 function det2(a: { x: number; y: number }, b: { x: number; y: number }) {
   return a.x * b.y - a.y * b.x;
@@ -27,16 +34,16 @@ export default function SpanSketch({
   initialA?: Vec3;
   initialB?: Vec3;
 }) {
-  const [mode] = useState<Mode>("2d");
+  const mode: Mode = "2d";
   const zHeldRef = useRef(false);
 
   const stateRef = useRef<VectorPadState>({
     a: initialA,
     b: initialB,
-    scale: 60,
+    scale: 26,
 
     showGrid: true,
-    snapToGrid: false,
+    snapToGrid: true,
     autoGridStep: true,
     gridStep: 1,
 
@@ -52,10 +59,21 @@ export default function SpanSketch({
   const [a, setA] = useState<Vec3>(stateRef.current.a);
   const [b, setB] = useState<Vec3>(stateRef.current.b);
 
-  const onPreview = (na: Vec3, nb: Vec3) => {
+  const handles = useMemo(() => ({ a: true, b: true }), []);
+
+  const onPreview = useCallback((na: Vec3, nb: Vec3) => {
+    stateRef.current.a = na;
+    stateRef.current.b = nb;
     setA(na);
     setB(nb);
-  };
+  }, []);
+
+  const onCommit = useCallback((na: Vec3, nb: Vec3) => {
+    stateRef.current.a = na;
+    stateRef.current.b = nb;
+    setA(na);
+    setB(nb);
+  }, []);
 
   const a2 = { x: a.x, y: a.y };
   const b2 = { x: b.x, y: b.y };
@@ -64,7 +82,10 @@ export default function SpanSketch({
   const bMag = mag2(b2);
 
   const independent = aMag > 1e-6 && bMag > 1e-6 && area > 1e-4;
-  const spanLabel = independent ? "span{a,b} = R^2" : "span{a,b} is a line";
+ const spanLabel = independent
+  ? String.raw`\operatorname{span}\{\vec a,\vec b\}=\mathbb{R}^2`
+  : String.raw`\operatorname{span}\{\vec a,\vec b\}\text{ is a line}`;
+
 
   const hud = useMemo(() => {
     const aLatex = fmtVec2Latex(Number(fmtNum(a.x, 2)), Number(fmtNum(a.y, 2)));
@@ -94,7 +115,10 @@ $$
 $$
 
 - $|\det(\vec a,\vec b)| = ${fmtNum(area, 4)}$
-- Conclusion: **${spanLabel}**
+**Conclusion:**
+$$
+${spanLabel}
+$$
 
 **Why:** ${msg}
 
@@ -102,57 +126,72 @@ $$
 `.trim();
   }, [a.x, a.y, b.x, b.y, area, independent, spanLabel]);
 
-  const overlay2D = useMemo(() => {
-    return ({ s, W, H, origin, worldToScreen2 }: any) => {
-      const st = stateRef.current;
-      const A = st.a;
-      const B = st.b;
+  // ✅ stable overlay (compute from stateRef inside)
+  const overlay2D = useCallback(({ s, W, H, origin, worldToScreen2 }: Overlay2DArgs) => {
+    const st = stateRef.current;
+    const A = st.a;
+    const B = st.b;
 
-      // pick a direction for the span-line in dependent case:
-      const dir = safeDir(Math.hypot(B.x, B.y) > 1e-6 ? { x: B.x, y: B.y } : { x: A.x, y: A.y });
+    const areaNow = Math.abs(det2({ x: A.x, y: A.y }, { x: B.x, y: B.y }));
+    const aMagNow = Math.hypot(A.x, A.y);
+    const bMagNow = Math.hypot(B.x, B.y);
 
-      if (independent) {
-        // light "plane" hint (just a subtle wash)
-        s.push();
-        s.noStroke();
-        s.fill("rgba(52,211,153,0.06)");
-        s.rect(0, 0, W, H);
-        s.pop();
-      } else {
-        // draw span line through origin
-        const o = origin();
-        const L = 9999;
-        const p1 = worldToScreen2({ x: -dir.x * L, y: -dir.y * L, z: 0 });
-        const p2 = worldToScreen2({ x: dir.x * L, y: dir.y * L, z: 0 });
+    const independentNow = aMagNow > 1e-6 && bMagNow > 1e-6 && areaNow > 1e-4;
+    const spanLabelNow = independentNow ? "span{a,b} = R^2" : "span{a,b} is a line";
 
-        s.push();
-        s.stroke("rgba(250,204,21,0.55)");
-        s.strokeWeight(6);
-        s.line(p1.x, p1.y, p2.x, p2.y);
-        s.pop();
-      }
+    // pick a direction for span line
+    const dir = safeDir(
+      Math.hypot(B.x, B.y) > 1e-6 ? { x: B.x, y: B.y } : { x: A.x, y: A.y }
+    );
 
+    if (independentNow) {
       s.push();
       s.noStroke();
-      s.fill("rgba(255,255,255,0.85)");
-      s.textSize(12);
-      s.textAlign(s.LEFT, s.TOP);
-      s.text(spanLabel, 12, 48);
+      s.fill("rgba(52,211,153,0.06)");
+      s.rect(0, 0, W, H);
       s.pop();
-    };
-  }, [independent, spanLabel]);
+    } else {
+      const o = origin();
+      const L = 9999;
+      const p1 = worldToScreen2({ x: -dir.x * L, y: -dir.y * L, z: 0 });
+      const p2 = worldToScreen2({ x: dir.x * L, y: dir.y * L, z: 0 });
+
+      s.push();
+      s.stroke("rgba(250,204,21,0.55)");
+      s.strokeWeight(6);
+      s.line(p1.x, p1.y, p2.x, p2.y);
+      s.pop();
+
+      // subtle wash too
+      s.push();
+      s.noStroke();
+      s.fill("rgba(250,204,21,0.03)");
+      s.rect(0, 0, W, H);
+      s.pop();
+    }
+
+    s.push();
+    s.noStroke();
+    s.fill("rgba(255,255,255,0.85)");
+    s.textSize(12);
+    s.textAlign(s.LEFT, s.TOP);
+    s.text(spanLabelNow, 12, 48);
+    s.pop();
+  }, []);
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" style={{ touchAction: "none" }}>
       <div className="grid gap-3 md:grid-cols-[1fr_320px] h-full">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
           <VectorPad
             mode={mode}
             stateRef={stateRef}
             zHeldRef={zHeldRef}
-            handles={{ a: true, b: true }}
+            handles={handles}
+            previewThrottleMs={50}
             onPreview={onPreview}
-            overlay2D={overlay2D as any}
+            onCommit={onCommit}
+            overlay2D={overlay2D}
             className="h-[420px] w-full"
           />
         </div>
