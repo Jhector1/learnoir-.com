@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 
-/**
- * Replace this with your existing auth() / session role logic.
- * For now, it just allows everything in dev and blocks in prod if no header is set.
- */
-export async function requireAdmin(req: Request) {
-  if (process.env.NODE_ENV !== "production") return;
+const ADMINS = new Set(
+  (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+);
 
-  // Example: require a header in production (temporary).
-  // Replace with session role check.
-  const ok = req.headers.get("x-admin") === "1";
-  if (!ok) {
-    throw NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function requireAdmin() {
+  const session = await auth();
+  const email = session?.user?.email?.toLowerCase();
+
+  if (!email) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!ADMINS.has(email)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
 }
