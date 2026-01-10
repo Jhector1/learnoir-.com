@@ -418,8 +418,8 @@ export default function VectorPad({
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-        //   canvasEl.focus?.();
-        (canvasEl as any).focus?.({ preventScroll: true });
+          //   canvasEl.focus?.();
+          (canvasEl as any).focus?.({ preventScroll: true });
 
           s.textFont(
             "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
@@ -461,7 +461,7 @@ export default function VectorPad({
           drawGrid();
           drawAxisLabels2D();
 
-overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
+          overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
 
           drawUnitB(bV);
           drawComponents(aV, "rgba(122,162,255,0.55)");
@@ -846,8 +846,8 @@ overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-        //   canvasEl.focus?.();
-        (canvasEl as any).focus?.({ preventScroll: true });
+          //   canvasEl.focus?.();
+          (canvasEl as any).focus?.({ preventScroll: true });
 
           // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
           const originalRemove = (s as any).remove?.bind(s);
@@ -896,8 +896,7 @@ overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
           s.directionalLight(255, 255, 255, 0.2, 0.4, -1);
 
           drawAxis();
-       overlay3DRef.current?.({ s, W, H, labelAt });
-
+          overlay3DRef.current?.({ s, W, H, labelAt });
 
           drawVector(A, COLORS.a);
           drawVector(B, COLORS.b);

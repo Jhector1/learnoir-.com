@@ -167,8 +167,8 @@ export default function DotProductSketch({
 
       s.fill("rgba(255,255,255,0.75)");
       s.textAlign(s.LEFT, s.TOP);
-      s.text(`a·b = ${fmtNum(aDotbLocal, 3)}   |   θ = ${fmtNum(thetaLocal, 1)}°`, 12, 12);
-      s.text("drag tips • wheel = zoom • Shift = no-snap (when Snap ON)", 12, 28);
+      s.text(`a·b = ${fmtNum(aDotbLocal, 3)}   |   θ = ${fmtNum(thetaLocal, 1)}°`, 12, 32);
+    //   s.text("drag tips • wheel = zoom • Shift = no-snap (when Snap ON)", 12, 28);
 
       s.pop();
     },

@@ -647,21 +647,9 @@ export default function Module0VectorSimulatorP5Hybrid({
 
         {/* CANVAS */}
         <div className="relative z-0 min-h-[520px] lg:min-h-[calc(100vh-28px)]">
-          <div className="h-full w-full rounded-2xl border border-white/10 bg-white/[0.02] shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
-            <VectorPad
-              mode={mode}
-              stateRef={stateRef}
-              zHeldRef={zHeldRef}
-              onScaleChange={onScaleChange} // ✅ stable, no remounts
-              onPreview={onPreviewUI}
-              onCommit={onCommitUI}
-              previewThrottleMs={16} // ✅ near-60fps UI mirror
-              className="relative h-full w-full min-h-[520px]"
-            />
-          </div>
-
-          {/* HUD */}
-          <div className="pointer-events-none absolute inset-3 flex items-start justify-between gap-3">
+         
+              {/* HUD */}
+          <div className="pointer-events-none absmolute inset-3 flex items-start justify-between gap-3">
             <div className="max-w-[560px] rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
               <div className="text-sm font-black">Controls</div>
               <p className="mt-1 text-xs leading-relaxed text-white/70">
@@ -703,6 +691,20 @@ export default function Module0VectorSimulatorP5Hybrid({
               </p>
             </div>
           </div>
+          <div className="h-full w-full rounded-2xl border border-white/10 bg-white/[0.02] shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
+            <VectorPad
+              mode={mode}
+              stateRef={stateRef}
+              zHeldRef={zHeldRef}
+              onScaleChange={onScaleChange} // ✅ stable, no remounts
+              onPreview={onPreviewUI}
+              onCommit={onCommitUI}
+              previewThrottleMs={16} // ✅ near-60fps UI mirror
+              className="relative h-full w-full min-h-[520px]"
+            />
+          </div>
+
+     
         </div>
       </div>
 
