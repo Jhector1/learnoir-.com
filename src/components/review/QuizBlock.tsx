@@ -21,6 +21,7 @@ export default function QuizBlock({
   const result = useMemo(() => {
     if (!submitted) return null;
     let correct = 0;
+
     for (const q of questions) {
       if (q.kind === "mcq") {
         if (answers[q.id] === q.answerId) correct++;
@@ -30,6 +31,7 @@ export default function QuizBlock({
         if (Number.isFinite(v) && Math.abs(v - q.answer) <= tol) correct++;
       }
     }
+
     const score = questions.length ? correct / questions.length : 1;
     return { correct, score, passed: score >= passScore };
   }, [submitted, answers, questions, passScore]);
@@ -37,16 +39,21 @@ export default function QuizBlock({
   return (
     <div className="mt-3 grid gap-3">
       {questions.map((q) => (
-        <div key={q.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-      <MathMarkdown
-          className="
-    text-sm text-white/80
-    [&_.katex]:text-white/90
-    [&_.katex-display]:overflow-x-auto
-    [&_.katex-display]:py-2
-  "
-          content={q.prompt}
-        />
+        <div
+          key={q.id}
+          className="rounded-xl border border-white/10 bg-white/[0.03] p-3"
+        >
+          {/* PROMPT (renders math) */}
+          <MathMarkdown
+            className="
+              text-sm text-white/80
+              [&_.katex]:text-white/90
+              [&_.katex-display]:overflow-x-auto
+              [&_.katex-display]:py-2
+            "
+            content={q.prompt}
+          />
+
           {q.kind === "mcq" ? (
             <div className="mt-2 grid gap-2">
               {q.choices.map((c) => (
@@ -61,23 +68,50 @@ export default function QuizBlock({
                       : "border-white/10 bg-white/5 hover:bg-white/10",
                   ].join(" ")}
                 >
-                  {c.label}
+                  {/* CHOICE LABEL (FIX: render with MathMarkdown inline) */}
+                  <MathMarkdown
+                    inline
+                    className="
+                      text-xs font-extrabold text-white/90
+                      [&_.katex]:text-white/90
+                      [&_.katex-display]:overflow-x-auto
+                      [&_.katex-display]:py-1
+                    "
+                    content={c.label}
+                  />
                 </button>
               ))}
             </div>
           ) : (
-            <div className="mt-2 flex gap-2 items-center">
+            <div className="mt-2 flex items-center gap-2">
               <input
                 className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-extrabold text-white/90 outline-none"
                 placeholder="Enter a number"
                 value={answers[q.id] ?? ""}
-                onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                onChange={(e) =>
+                  setAnswers((a) => ({ ...a, [q.id]: e.target.value }))
+                }
               />
-              {q.tolerance ? <div className="text-xs text-white/50">± {q.tolerance}</div> : null}
+              {q.tolerance ? (
+                <div className="text-xs text-white/50">± {q.tolerance}</div>
+              ) : null}
             </div>
           )}
 
-          {submitted && q.explain ? <div className="mt-2 text-xs text-white/60">{q.explain}</div> : null}
+          {/* EXPLANATION (FIX: render with MathMarkdown so math works) */}
+          {submitted && q.explain ? (
+            <div className="mt-2 rounded-lg border border-white/10 bg-black/30 p-2">
+              <MathMarkdown
+                className="
+                  text-xs text-white/70
+                  [&_.katex]:text-white/90
+                  [&_.katex-display]:overflow-x-auto
+                  [&_.katex-display]:py-1
+                "
+                content={q.explain}
+              />
+            </div>
+          ) : null}
         </div>
       ))}
 

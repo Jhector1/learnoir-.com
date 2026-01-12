@@ -72,7 +72,7 @@ export default function Module0VectorSimulatorP5Hybrid({
     mode,
     scale,
     gridStep,
-    autoGridStep: true,
+    autoGridStep: false,
     snapToGrid,
     showGrid,
     showComponents,

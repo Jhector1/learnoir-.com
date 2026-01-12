@@ -39,7 +39,7 @@ function solveCoords2D(p: Vec2, b1: Vec2, b2: Vec2) {
 
 export default function BasisSketch({
   initialB1 = { x: 1, y: 0, z: 0 },
-  initialB2 = { x: 0.4, y: 1, z: 0 },
+  initialB2 = { x: 0, y: 1, z: 0 },
   pointP = { x: 3, y: 1 },
 }: {
   initialB1?: Vec3;
@@ -60,7 +60,7 @@ export default function BasisSketch({
 
     showGrid: true,
     snapToGrid: true,
-    autoGridStep: true,
+    autoGridStep: false,
     gridStep: 1,
 
     showComponents: false,

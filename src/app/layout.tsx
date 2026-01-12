@@ -1,4 +1,6 @@
 import "katex/dist/katex.min.css";
+import "highlight.js/styles/github-dark.css"; // pick any theme you like
+
 import type { Metadata } from "next";
 import "./globals.css";
 import HeaderSlick from "../components/HeaderSlick";

@@ -44,7 +44,7 @@ export default function SpanSketch({
 
     showGrid: true,
     snapToGrid: true,
-    autoGridStep: true,
+    autoGridStep: false,
     gridStep: 1,
 
     showComponents: false,
