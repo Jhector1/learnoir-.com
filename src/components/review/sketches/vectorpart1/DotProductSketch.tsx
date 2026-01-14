@@ -1,12 +1,15 @@
 "use client";
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import MathMarkdown from "@/components/math/MathMarkdown";
 import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Mode, Vec3 } from "@/lib/math/vec3";
-import { fmtNum, fmtVec2Latex } from "@/lib/review/latex";
-import { clamp, dot2, len, mul, type Overlay2DArgs } from "./_vec2";
+import { fmtVec2Latex } from "@/lib/review/latex";
+import { clamp, dot2, len, mul, type Overlay2DArgs } from "../_vec2";
+import { makeNumberFormatter } from "@/i18n/format";
+// import { makeNumberFormatter } from "@/lib/i18n/for mat";
 
 export default function DotProductSketch({
   initialA = { x: 4, y: 1.5 },
@@ -19,13 +22,18 @@ export default function DotProductSketch({
   grid?: number;
   worldExtent?: number;
 }) {
+  const t = useTranslations("SketchesVectorPart1.dot");
+  const tc = useTranslations("SketchesVectorPart1.common");
+  const locale = useLocale();
+  const nf = useMemo(() => makeNumberFormatter(locale), [locale]);
+
   const mode: Mode = "2d";
   const zHeldRef = useRef(false);
   const INITIAL_SCALE = 26;
 
   const stateRef = useRef<VectorPadState>({
-    a: { x: initialA.x, y: initialA.y, z: 0 }, // blue = a
-    b: { x: initialB.x, y: initialB.y, z: 0 }, // pink = b
+    a: { x: initialA.x, y: initialA.y, z: 0 },
+    b: { x: initialB.x, y: initialB.y, z: 0 },
 
     scale: INITIAL_SCALE,
     showGrid: true,
@@ -98,16 +106,27 @@ export default function DotProductSketch({
     return clamp(aDotb / denom, -1, 1);
   }, [aDotb, aMag, bMag]);
 
-  const thetaDeg = useMemo(() => (Math.acos(cosTheta) * 180) / Math.PI, [cosTheta]);
+  const thetaDeg = useMemo(
+    () => (Math.acos(cosTheta) * 180) / Math.PI,
+    [cosTheta]
+  );
 
   const bDotb = useMemo(() => dot2(b, b), [b]);
   const alpha = useMemo(() => (bDotb === 0 ? 0 : aDotb / bDotb), [aDotb, bDotb]);
-  const proj = useMemo(() => (bDotb === 0 ? ({ x: 0, y: 0, z: 0 } as Vec3) : mul(b, alpha)), [b, bDotb, alpha]);
+  const proj = useMemo(
+    () => (bDotb === 0 ? ({ x: 0, y: 0, z: 0 } as Vec3) : mul(b, alpha)),
+    [b, bDotb, alpha]
+  );
 
-  const scalarProj = useMemo(() => (bMag <= 1e-12 ? 0 : aDotb / bMag), [aDotb, bMag]);
+  const scalarProj = useMemo(
+    () => (bMag <= 1e-12 ? 0 : aDotb / bMag),
+    [aDotb, bMag]
+  );
 
-  const signLabel =
-    Math.abs(aDotb) < 1e-6 ? "≈ 0 (orthogonal)" : aDotb > 0 ? "> 0" : "< 0";
+  const signLabel = useMemo(() => {
+    if (Math.abs(aDotb) < 1e-6) return t("sign.zero");
+    return aDotb > 0 ? t("sign.pos") : t("sign.neg");
+  }, [aDotb, t]);
 
   const overlay2D = useCallback(
     ({ s, worldToScreen2 }: Overlay2DArgs) => {
@@ -135,20 +154,28 @@ export default function DotProductSketch({
 
       s.fill("rgba(255,255,255,0.75)");
       s.textAlign(s.LEFT, s.TOP);
-      s.text(`a·b = ${fmtNum(aDotbLocal, 3)}   |   θ = ${fmtNum(thetaLocal, 1)}°`, 12, 32);
+
+      s.text(
+        t("overlayLine", { dot: nf(aDotbLocal, 3), theta: nf(thetaLocal, 1) }),
+        12,
+        32
+      );
 
       s.pop();
     },
-    []
+    [nf, t]
   );
 
   const hud = useMemo(() => {
-    const aLatex = fmtVec2Latex(Number(fmtNum(a.x, 2)), Number(fmtNum(a.y, 2)));
-    const bLatex = fmtVec2Latex(Number(fmtNum(b.x, 2)), Number(fmtNum(b.y, 2)));
-    const projLatex = fmtVec2Latex(Number(fmtNum(proj.x, 2)), Number(fmtNum(proj.y, 2)));
+    const aLatex = fmtVec2Latex(Number(a.x.toFixed(2)), Number(a.y.toFixed(2)));
+    const bLatex = fmtVec2Latex(Number(b.x.toFixed(2)), Number(b.y.toFixed(2)));
+    const projLatex = fmtVec2Latex(
+      Number(proj.x.toFixed(2)),
+      Number(proj.y.toFixed(2))
+    );
 
     return String.raw`
-**Dot product**
+${t("hud.header")}
 
 $$
 \vec a = ${aLatex},
@@ -156,25 +183,25 @@ $$
 \vec b = ${bLatex}
 $$
 
-- Dot:
+- ${t("hud.dot")}
   $$
-  \vec a \cdot \vec b = ${fmtNum(aDotb, 3)}
+  \vec a \cdot \vec b = ${nf(aDotb, 3)}
   $$
-  **Sign:** ${signLabel}
+  ${t("hud.sign", { sign: signLabel })}
 
-- Angle:
+- ${t("hud.angle")}
   $$
-  \cos\theta = \frac{\vec a\cdot \vec b}{\|\vec a\|\;\|\vec b\|} = ${fmtNum(cosTheta, 3)}
+  \cos\theta = \frac{\vec a\cdot \vec b}{\|\vec a\|\;\|\vec b\|} = ${nf(cosTheta, 3)}
   \qquad
-  \theta = ${fmtNum(thetaDeg, 1)}^\circ
+  \theta = ${nf(thetaDeg, 1)}^\circ
   $$
 
-- Scalar projection (“shadow length” on $\vec b$):
+- ${t("hud.scalarProj")}
   $$
-  \operatorname{comp}_{\vec b}(\vec a)=\frac{\vec a\cdot \vec b}{\|\vec b\|} = ${fmtNum(scalarProj, 3)}
+  \operatorname{comp}_{\vec b}(\vec a)=\frac{\vec a\cdot \vec b}{\|\vec b\|} = ${nf(scalarProj, 3)}
   $$
 
-- Projection:
+- ${t("hud.projection")}
   $$
   \operatorname{proj}_{\vec b}(\vec a)
   =
@@ -183,7 +210,7 @@ $$
   ${projLatex}
   $$
 `.trim();
-  }, [a, b, aDotb, cosTheta, thetaDeg, proj, signLabel, scalarProj]);
+  }, [a, b, proj, aDotb, cosTheta, thetaDeg, scalarProj, signLabel, nf, t]);
 
   const toggle = (key: keyof VectorPadState) => {
     (stateRef.current as any)[key] = !(stateRef.current as any)[key];
@@ -215,29 +242,52 @@ $$
       <div className="grid gap-3 md:grid-cols-[1fr_300px]">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button onClick={() => toggle("showGrid")} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Grid: {stateRef.current.showGrid ? "ON" : "off"}
+            <button
+              onClick={() => toggle("showGrid")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("grid")}: {stateRef.current.showGrid ? tc("on") : tc("off")}
             </button>
-            <button onClick={() => toggle("snapToGrid")} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Snap: {stateRef.current.snapToGrid ? "ON" : "off"}
+
+            <button
+              onClick={() => toggle("snapToGrid")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("snap")}: {stateRef.current.snapToGrid ? tc("on") : tc("off")}
             </button>
-            <button onClick={() => toggle("autoGridStep")} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Auto step: {stateRef.current.autoGridStep ? "ON" : "off"}
+
+            <button
+              onClick={() => toggle("autoGridStep")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("autoStep")}: {stateRef.current.autoGridStep ? tc("on") : tc("off")}
             </button>
-            <button onClick={() => toggle("showAngle")} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Angle: {stateRef.current.showAngle ? "ON" : "off"}
+
+            <button
+              onClick={() => toggle("showAngle")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("angle")}: {stateRef.current.showAngle ? tc("on") : tc("off")}
             </button>
-            <button onClick={() => toggle("showProjection")} className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Projection: {stateRef.current.showProjection ? "ON" : "off"}
+
+            <button
+              onClick={() => toggle("showProjection")}
+              className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("projection")}: {stateRef.current.showProjection ? tc("on") : tc("off")}
             </button>
-            <button onClick={reset} className="ml-auto rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]">
-              Reset
+
+            <button
+              onClick={reset}
+              className="ml-auto rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+            >
+              {tc("reset")}
             </button>
           </div>
 
           {!stateRef.current.autoGridStep && (
             <div className="mb-3 flex items-center gap-3">
-              <div className="text-xs text-white/70">Grid step</div>
+              <div className="text-xs text-white/70">{tc("gridStep")}</div>
               <input
                 type="range"
                 min={0.25}
@@ -247,12 +297,14 @@ $$
                 onChange={(e) => setGridStep(Number(e.target.value))}
                 className="w-48"
               />
-              <div className="text-xs text-white/70 w-12">{fmtNum(stateRef.current.gridStep, 2)}</div>
+              <div className="text-xs text-white/70 w-12">
+                {nf(stateRef.current.gridStep, 2)}
+              </div>
             </div>
           )}
 
           <div className="mb-3 flex items-center gap-3">
-            <div className="text-xs text-white/70">Zoom</div>
+            <div className="text-xs text-white/70">{tc("zoom")}</div>
             <input
               type="range"
               min={20}
@@ -262,7 +314,7 @@ $$
               onChange={(e) => handleScaleChange(Number(e.target.value))}
               className="w-64"
             />
-            <div className="text-xs text-white/70 w-12">{fmtNum(scale, 2)}</div>
+            <div className="text-xs text-white/70 w-12">{nf(scale, 2)}</div>
           </div>
 
           <div className="relative h-[320px] w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">

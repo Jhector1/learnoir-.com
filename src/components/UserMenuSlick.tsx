@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 
 type Props = {
   name: string;
@@ -23,6 +24,7 @@ export default function UserMenuSlick({
   profileHref = "/profile",
   onSignOut,
 }: Props) {
+  const t = useTranslations("UserMenu");
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -62,13 +64,13 @@ export default function UserMenuSlick({
           "hover:bg-white/[0.10] focus:outline-none focus:ring-2 focus:ring-white/15"
         )}
         aria-expanded={open}
-        aria-label="User menu"
+        aria-label={t("ariaLabel")}
       >
         <span className="relative grid h-8 w-8 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06]">
           {image ? (
             <Image
               src={image}
-              alt={`${name} avatar`}
+              alt={t("avatarAlt", { name })}
               width={32}
               height={32}
               className="h-8 w-8 object-cover"
@@ -100,13 +102,17 @@ export default function UserMenuSlick({
         className={cn(
           "absolute right-0 mt-2 w-64 origin-top-right",
           "transition-[opacity,transform] duration-150",
-          open ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 -translate-y-1 pointer-events-none"
+          open
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 -translate-y-1 pointer-events-none"
         )}
       >
         <div className="rounded-2xl border border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] overflow-hidden">
           <div className="px-4 py-3 border-b border-white/10">
             <div className="text-sm font-extrabold text-white/90 truncate">{name}</div>
-            {email ? <div className="mt-0.5 text-[12px] text-white/55 truncate">{email}</div> : null}
+            {email ? (
+              <div className="mt-0.5 text-[12px] text-white/55 truncate">{email}</div>
+            ) : null}
           </div>
 
           <div className="p-2">
@@ -115,14 +121,15 @@ export default function UserMenuSlick({
               onClick={() => setOpen(false)}
               className="block rounded-xl px-3 py-2 text-sm font-bold text-white/80 hover:bg-white/[0.08] hover:text-white/90"
             >
-              Profile
+              {t("profile")}
             </Link>
-             <Link
-              href={"/progress"}
+
+            <Link
+              href="/progress"
               onClick={() => setOpen(false)}
               className="block rounded-xl px-3 py-2 text-sm font-bold text-white/80 hover:bg-white/[0.08] hover:text-white/90"
             >
-              Progress
+              {t("progress")}
             </Link>
 
             <button
@@ -133,7 +140,7 @@ export default function UserMenuSlick({
               }}
               className="mt-1 w-full text-left rounded-xl px-3 py-2 text-sm font-bold text-white/80 hover:bg-white/[0.08] hover:text-white/90"
             >
-              Log out
+              {t("logout")}
             </button>
           </div>
         </div>

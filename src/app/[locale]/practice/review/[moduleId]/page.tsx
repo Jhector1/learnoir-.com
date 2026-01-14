@@ -9,10 +9,12 @@ import type { ReviewModule } from "@/lib/review/types";
 // ✅ Import modules here (add more as you create them)
 import { vectorsModule,  } from "@/lib/review/modules/vectors";
 import {vectorsPart2Module} from "@/lib/review/modules/vectorsPart2Module";
+import {matricesPart1Module} from "@/lib/review/modules/matricesPart1Module";
 // ✅ Register modules by id
 const MODULES: Record<string, ReviewModule> = {
   [vectorsModule.id]: vectorsModule,
   [vectorsPart2Module.id]: vectorsPart2Module,
+  [matricesPart1Module.id]: matricesPart1Module,
 };
 
 export default function ReviewModulePage() {
@@ -22,6 +24,7 @@ export default function ReviewModulePage() {
   const moduleId = params?.moduleId ?? "";
 
   const mod = useMemo(() => MODULES[moduleId], [moduleId]);
+  console.log("Loaded review module:", mod);
 
   if (!mod) {
     const known = Object.keys(MODULES);

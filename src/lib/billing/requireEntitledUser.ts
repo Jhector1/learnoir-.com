@@ -20,6 +20,7 @@ export async function requireEntitledUser() {
           message: "Subscription required.",
           paywall: true,
           reason: ent.reason,
+            redirectTo: "/billing",
         },
         { status: 402 } // Payment Required
       ),

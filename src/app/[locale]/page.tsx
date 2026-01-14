@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import SpanBasisModule from "@/components/modules/SpanBasisModule";
 import Module0VectorSimulatorP5Hybrid from "@/components/Module0VectorSimulatorP5Hybrid";
 import type { Mode } from "@/lib/math/vec3";
+import { useTranslations } from "next-intl";
 
 type Tool = "span" | "module0";
 
@@ -53,53 +54,47 @@ function SegButton({
 }
 
 export default function Home() {
+  const t = useTranslations("Playground");
+
   const [tool, setTool] = useState<Tool>("module0");
   const [mode, setMode] = useState<Mode>("2d");
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      {/* Header */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-xl font-semibold text-white">Linear Algebra Playground</div>
-          <div className="text-sm text-white/60">Pick a tool, then switch between 2D/3D.</div>
+          <div className="text-xl font-semibold text-white">{t("title")}</div>
+          <div className="text-sm text-white/60">{t("subtitle")}</div>
         </div>
 
-        {/* Tool tabs */}
         <div className="flex items-center gap-2">
           <TabButton active={tool === "span"} onClick={() => setTool("span")}>
-            Span / Basis
+            {t("tabs.spanBasis")}
           </TabButton>
           <TabButton active={tool === "module0"} onClick={() => setTool("module0")}>
-            Dot / Projection (Module 0)
+            {t("tabs.module0")}
           </TabButton>
         </div>
       </div>
 
-      {/* Mode toggle */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 p-3">
         <div className="text-sm text-white/70">
-          View mode: <span className="text-white">{mode.toUpperCase()}</span>
+          {t("viewMode")} <span className="text-white">{mode.toUpperCase()}</span>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
           <div className="flex">
             <SegButton active={mode === "2d"} onClick={() => setMode("2d")}>
-              2D
+              {t("mode.2d")}
             </SegButton>
             <SegButton active={mode === "3d"} onClick={() => setMode("3d")}>
-              3D
+              {t("mode.3d")}
             </SegButton>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      {tool === "span" ? (
-        <SpanBasisModule mode={mode} />
-      ) : (
-        <Module0VectorSimulatorP5Hybrid mode={mode} />
-      )}
+      {tool === "span" ? <SpanBasisModule mode={mode} /> : <Module0VectorSimulatorP5Hybrid mode={mode} />}
     </div>
   );
 }

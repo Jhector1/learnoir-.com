@@ -1,14 +1,22 @@
 import React from "react";
 
-import VectorBasicsSketch from "@/components/review/sketches/VectorBasicsSketch";
-import DotProductSketch from "@/components/review/sketches/DotProductSketch";
-import ProjectionSketch from "@/components/review/sketches/ProjectionSketch";
-import IndependenceSketch from "@/components/review/sketches/IndependenceSketch";
-import SpanSketch from "@/components/review/sketches/SpanSketch";
-import BasisSketch from "@/components/review/sketches/BasisSketch";
+import VectorBasicsSketch from "@/components/review/sketches/vectorpart1/VectorBasicsSketch";
+import DotProductSketch from "@/components/review/sketches/vectorpart1/DotProductSketch";
+import ProjectionSketch from "@/components/review/sketches/vectorpart1/ProjectionSketch";
+import IndependenceSketch from "@/components/review/sketches/vectorpart2/IndependenceSketch";
+import SpanSketch from "@/components/review/sketches/vectorpart2/SpanSketch";
+import BasisSketch from "@/components/review/sketches/vectorpart2/BasisSketch";
 
-import NumpyShapesSketch from "@/components/review/sketches/NumpyShapesSketch";
-import HadamardOuterSketch from "@/components/review/sketches/HadamardOuterSketch";
+import NumpyShapesSketch from "@/components/review/sketches/vectorpart1/NumpyShapesSketch";
+import HadamardOuterSketch from "@/components/review/sketches/vectorpart1/HadamardOuterSketch";
+import MatrixAsImageSketch from "./sketches/matrices/MatrixAsImageSketch";
+import MatrixSliceSketch from "./sketches/matrices/MatrixSliceSketch";
+import SpecialMatricesSketch from "./sketches/matrices/SpecialMatricesSketch";
+import HadamardShiftSketch from "./sketches/matrices/HadamardShiftSketch";
+import MatMulExplorerSketch from "./sketches/matrices/MatMulExplorerSketch";
+import LiveEvilSketch from "./sketches/matrices/LiveEvilSketch";
+import SymmetricBuilderSketch from "./sketches/matrices/SymmetricBuilderSketch";
+import Transform2DSketch from "./sketches/matrices/Transform2DSketch";
 
 const SKETCHES: Record<string, React.ComponentType<any>> = {
   "vec.basics": VectorBasicsSketch,
@@ -21,6 +29,14 @@ const SKETCHES: Record<string, React.ComponentType<any>> = {
   "vec.independence": IndependenceSketch,
   "vec.span": SpanSketch,
   "vec.basis": BasisSketch,
+  "matrices.image": MatrixAsImageSketch,
+  "matrices.slice": MatrixSliceSketch,
+  "matrices.special": SpecialMatricesSketch,
+  "matrices.hadamard_shift": HadamardShiftSketch,
+  "matrices.matmul": MatMulExplorerSketch,
+  "matrices.transform2d": Transform2DSketch,
+  "matrices.liveevil": LiveEvilSketch,
+  "matrices.symmetric": SymmetricBuilderSketch,
 };
 
 export default function SketchHost({

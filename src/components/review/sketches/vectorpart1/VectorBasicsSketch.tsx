@@ -6,7 +6,7 @@ import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Mode, Vec3 } from "@/lib/math/vec3";
 import { fmtNum, fmtVec2Latex } from "@/lib/review/latex";
 import MathMarkdown from "@/components/math/MathMarkdown";
-import { type Overlay2DArgs, unit2 } from "./_vec2";
+import { type Overlay2DArgs, unit2 } from "../_vec2";
 
 export default function VectorBasicsSketch({
   initial = { x: 3, y: 2 },

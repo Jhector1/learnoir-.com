@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // ✅ keep all your existing config here
+  // images: {...},
+  // experimental: {...},
+  // redirects: async () => [...],
 };
 
-export default nextConfig;
+const withNextIntl = createNextIntlPlugin();
+
+// ✅ wrap it, don’t replace it
+export default withNextIntl(nextConfig);

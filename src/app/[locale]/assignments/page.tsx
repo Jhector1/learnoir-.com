@@ -1,4 +1,3 @@
-// src/app/assignments/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -23,6 +22,10 @@ type Assignment = {
 const badge = (txt: string) =>
   "rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-extrabold text-white/70";
 
+function billingUrl(nextPath: string) {
+  return `/billing?next=${encodeURIComponent(nextPath)}`;
+}
+
 export default function AssignmentsPage() {
   const [items, setItems] = useState<Assignment[]>([]);
   const [busy, setBusy] = useState(true);
@@ -33,24 +36,57 @@ export default function AssignmentsPage() {
       setBusy(true);
       try {
         const r = await fetch("/api/assignments", { cache: "no-store" });
+
+        // ✅ handle paywall
+        if (!r.ok) {
+          let data: any = null;
+          try {
+            data = await r.json();
+          } catch {}
+          if (r.status === 402 || data?.code === "NOT_ENTITLED") {
+            router.replace(billingUrl("/assignments"));
+            return;
+          }
+        }
+
         const data = await r.json();
         setItems(data.assignments ?? []);
       } finally {
         setBusy(false);
       }
     })();
-  }, []);
+  }, [router]);
 
-  const start = async (id: string, difficulty: string, topicForSection: string, questionCount: number) => {
+  const start = async (
+    id: string,
+    difficulty: string,
+    topicForSection: string,
+    questionCount: number
+  ) => {
     const r = await fetch(`/api/assignments/${id}/start`, { method: "POST" });
-    const data = await r.json();
+
+    let data: any = null;
+    try {
+      data = await r.json();
+    } catch {
+      // if something unexpected returns non-json
+      alert("Unexpected response. Please try again.");
+      return;
+    }
+
+    // ✅ if not subscribed -> billing
     if (!r.ok) {
+      if (r.status === 402 || data?.code === "NOT_ENTITLED") {
+        router.push(data?.redirectTo ? billingUrl("/assignments") : billingUrl("/assignments"));
+        return;
+      }
       alert(data?.message ?? "Unable to start.");
       return;
     }
-   
-    // ✅ route into your practice runner (add sessionId support there)
-    router.push(`/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}&questionCount=${questionCount}`);
+
+    router.push(
+      `/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}&questionCount=${questionCount}`
+    );
   };
 
   return (
@@ -104,14 +140,16 @@ export default function AssignmentsPage() {
 
                     <div className="mt-2 flex flex-wrap gap-2">
                       {a.topics?.map((t) => (
-                        <span key={t} className={badge(t.toUpperCase())}>{t.toUpperCase()}</span>
+                        <span key={t} className={badge(t.toUpperCase())}>
+                          {t.toUpperCase()}
+                        </span>
                       ))}
                     </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount??10)}
+                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount ?? 10)}
                       className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15"
                     >
                       Start

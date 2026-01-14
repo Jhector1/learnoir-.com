@@ -19,6 +19,7 @@ import type {
 } from "@/lib/practice/types";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MathMarkdown from "@/components/math/MathMarkdown";
+import { useTranslations } from "next-intl";
 
 const SESSION_DEFAULT = 10;
 
@@ -113,6 +114,8 @@ function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
 }
 
 export default function PracticePage() {
+  const t = useTranslations("Practice");
+
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -373,7 +376,12 @@ export default function PracticePage() {
     setSessionSize(initialSize);
 
     try {
-      const k4 = storageKeyV4(nextSection, nextTopic, nextDifficulty, initialSize);
+      const k4 = storageKeyV4(
+        nextSection,
+        nextTopic,
+        nextDifficulty,
+        initialSize
+      );
       const raw4 = sessionStorage.getItem(k4);
 
       if (raw4) {
@@ -613,7 +621,7 @@ export default function PracticePage() {
       });
     } catch (e: any) {
       if (e?.name === "AbortError") return;
-      setLoadErr(e?.message ?? "Failed to load question");
+      setLoadErr(e?.message ?? t("errors.failedToLoad"));
     } finally {
       if (abortRef.current === controller) setBusy(false);
     }
@@ -701,7 +709,7 @@ export default function PracticePage() {
       }
 
       if (!answer) {
-        setActionErr("Answer is incomplete or invalid.");
+        setActionErr(t("errors.incompleteAnswer"));
         return;
       }
 
@@ -725,13 +733,13 @@ export default function PracticePage() {
       const data = (await readJsonSafe(r)) as ValidateResponse;
       if (!r.ok) {
         throw new Error(
-          (data as any)?.message || `Validate failed (${r.status})`
+          (data as any)?.message || `${t("errors.failedToSubmit")} (${r.status})`
         );
       }
 
       updateCurrent({ result: data, submitted: true, revealed: false });
     } catch (e: any) {
-      setActionErr(e?.message ?? "Failed to submit");
+      setActionErr(e?.message ?? t("errors.failedToSubmit"));
     } finally {
       setBusy(false);
       submitLockRef.current = false;
@@ -754,7 +762,7 @@ export default function PracticePage() {
       const data = (await readJsonSafe(r)) as ValidateResponse;
       if (!r.ok)
         throw new Error(
-          (data as any)?.message || `Reveal failed (${r.status})`
+          (data as any)?.message || `${t("buttons.reveal")} (${r.status})`
         );
 
       const solA = (data as any)?.expected?.solutionA;
@@ -770,7 +778,7 @@ export default function PracticePage() {
       if (solA) padRef.current.a = cloneVec(solA) as any;
       if (bExp) padRef.current.b = cloneVec(bExp) as any;
     } catch (e: any) {
-      setActionErr(e?.message ?? "Failed to submit");
+      setActionErr(e?.message ?? t("errors.failedToSubmit"));
     } finally {
       setBusy(false);
     }
@@ -797,8 +805,8 @@ export default function PracticePage() {
       if (tag === "select" || tag === "textarea") return true;
 
       if (tag === "input") {
-        const t = (el as HTMLInputElement).type;
-        if (t === "checkbox" || t === "radio") return true;
+        const tt = (el as HTMLInputElement).type;
+        if (tt === "checkbox" || tt === "radio") return true;
       }
 
       return false;
@@ -877,6 +885,9 @@ export default function PracticePage() {
   const allowBDrag =
     exercise?.kind === "vector_drag_target" ? !exercise.lockB : false;
 
+  const gridModeSuffix =
+    gridMode === "auto" ? t("vectorPad.gridModeAuto") : t("vectorPad.gridModeLocked");
+
   // SUMMARY VIEW
   if (phase === "summary") {
     const pct = scorePct(correctCount, answeredCount);
@@ -884,22 +895,26 @@ export default function PracticePage() {
       <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
         <div className="mx-auto max-w-5xl grid gap-4">
           <CongratsCard
-            title="Session complete"
-            subtitle={`You finished ${answeredCount}/${sessionSize} exercises`}
-            scoreLine={`${correctCount} correct • ${
-              answeredCount - correctCount
-            } missed • ${pct}%`}
+            title={t("summary.title")}
+            subtitle={t("summary.subtitle", {
+              answered: answeredCount,
+              sessionSize,
+            })}
+            scoreLine={t("summary.scoreLine", {
+              correct: correctCount,
+              missed: answeredCount - correctCount,
+              pct,
+            })}
           />
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
             <div className="border-b border-white/10 bg-black/20 p-4 flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-black tracking-tight">
-                  Review & next steps
+                  {t("summary.reviewTitle")}
                 </div>
                 <div className="mt-1 text-xs text-white/70">
-                  Refresh won’t lose progress • You can also go back to
-                  questions.
+                  {t("summary.reviewSubtitle")}
                 </div>
               </div>
 
@@ -908,14 +923,16 @@ export default function PracticePage() {
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15"
                   onClick={() => setShowMissed((v) => !v)}
                 >
-                  {showMissed ? "Hide missed" : "Show missed"}
+                  {showMissed
+                    ? t("summary.toggleMissedHide")
+                    : t("summary.toggleMissedShow")}
                 </button>
 
                 <button
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15"
                   onClick={() => setPhase("practice")}
                 >
-                  Back to questions
+                  {t("summary.backToQuestions")}
                 </button>
               </div>
             </div>
@@ -924,14 +941,12 @@ export default function PracticePage() {
               <PracticeSummary missed={missed} />
             ) : (
               <div className="p-4 text-xs text-white/70">
-                Missed list hidden.
+                {t("summary.missedHidden")}
               </div>
             )}
           </div>
 
-          <div className="text-xs text-white/50">
-            Tip: changing topic/difficulty updates the URL params.
-          </div>
+          <div className="text-xs text-white/50">{t("summary.urlTip")}</div>
         </div>
       </div>
     );
@@ -952,16 +967,16 @@ export default function PracticePage() {
           <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d12]/95 shadow-2xl">
             <div className="border-b border-white/10 bg-white/[0.04] p-4">
               <div className="text-sm font-black tracking-tight text-white/90">
-                Restart session?
+                {t("confirm.title")}
               </div>
               <div className="mt-1 text-xs text-white/60">
-                Changing topic or difficulty will reset your current run.
+                {t("confirm.subtitle")}
               </div>
             </div>
 
             <div className="p-4">
               <div className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs text-white/80">
-                You’ll lose progress:{" "}
+                {t("confirm.loseProgress")}{" "}
                 <span className="font-extrabold">
                   {answeredCount}/{sessionSize}
                 </span>
@@ -973,20 +988,18 @@ export default function PracticePage() {
                   onClick={cancelPendingChange}
                   className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-extrabold text-white/80 hover:bg-white/10"
                 >
-                  Keep current session
+                  {t("confirm.keep")}
                 </button>
 
                 <button
                   onClick={applyPendingChange}
                   className="rounded-xl border border-rose-300/30 bg-rose-300/15 px-3 py-2 text-xs font-extrabold text-white hover:bg-rose-300/25"
                 >
-                  Yes, restart
+                  {t("confirm.restart")}
                 </button>
               </div>
 
-              <div className="mt-3 text-[11px] text-white/50">
-                Press <span className="font-extrabold">Esc</span> to close.
-              </div>
+              <div className="mt-3 text-[11px] text-white/50">{t("confirm.esc")}</div>
             </div>
           </div>
         </div>
@@ -1000,27 +1013,25 @@ export default function PracticePage() {
               <div>
                 {isAssignmentRun ? (
                   <div className="mt-2 inline-flex rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] font-extrabold text-amber-200/90">
-                    Assignment mode • filters locked
+                    {t("filters.assignmentLocked")}
                   </div>
                 ) : null}
 
                 <div className="text-sm font-black tracking-tight">
-                  Practice Generator
+                  {t("title")}
                 </div>
-                <div className="mt-1 text-xs text-white/70">
-                  Refresh keeps progress • ←/→ navigate • Enter submits
-                </div>
+                <div className="mt-1 text-xs text-white/70">{t("subtitle")}</div>
 
                 <div className="mt-2 text-xs text-white/60">
-                  Progress:{" "}
+                  {t("progress.label")}:{" "}
                   <span className="font-extrabold text-white/80">
                     {answeredCount}/{sessionSize}
                   </span>{" "}
-                  • Correct:{" "}
+                  • {t("progress.correct")}:{" "}
                   <span className="font-extrabold text-white/80">
                     {correctCount}
                   </span>{" "}
-                  • Q:{" "}
+                  • {t("progress.question")}:{" "}
                   <span className="font-extrabold text-white/80">
                     {stack.length ? idx + 1 : 0}/{stack.length}
                   </span>
@@ -1028,13 +1039,13 @@ export default function PracticePage() {
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-extrabold text-white/70">
-                {badge || "—"}
+                {badge || t("status.dash")}
               </div>
             </div>
 
             <div className="mt-3 grid gap-2">
               <label className="text-xs font-extrabold text-white/70">
-                Topic
+                {t("filters.topic")}
               </label>
               <select
                 disabled={isAssignmentRun}
@@ -1047,15 +1058,15 @@ export default function PracticePage() {
                   requestChange({ kind: "topic", value: next });
                 }}
               >
-                {topicOptions.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
+                {topicOptions.map((tt) => (
+                  <option key={tt.id} value={tt.id}>
+                    {tt.label}
                   </option>
                 ))}
               </select>
 
               <label className="text-xs font-extrabold text-white/70">
-                Difficulty
+                {t("filters.difficulty")}
               </label>
               <select
                 disabled={isAssignmentRun}
@@ -1081,7 +1092,7 @@ export default function PracticePage() {
                   onClick={goPrev}
                   disabled={busy || !canGoPrev()}
                 >
-                  Prev
+                  {t("buttons.prev")}
                 </button>
 
                 <button
@@ -1089,7 +1100,7 @@ export default function PracticePage() {
                   onClick={goNext}
                   disabled={busy || !canGoNext()}
                 >
-                  Next
+                  {t("buttons.next")}
                 </button>
 
                 <button
@@ -1097,7 +1108,7 @@ export default function PracticePage() {
                   onClick={submitAnswer}
                   disabled={busy || !exercise || !!current?.submitted}
                 >
-                  Submit
+                  {t("buttons.submit")}
                 </button>
 
                 <button
@@ -1105,34 +1116,34 @@ export default function PracticePage() {
                   onClick={revealAnswer}
                   disabled={busy || !exercise}
                 >
-                  Reveal
+                  {t("buttons.reveal")}
                 </button>
               </div>
             </div>
           </div>
 
           <div className="p-4">
-            <div className="text-xs font-extrabold text-white/60">Result</div>
+            <div className="text-xs font-extrabold text-white/60">
+              {t("result.title")}
+            </div>
             <div
               className={`mt-2 rounded-2xl border p-3 text-xs leading-relaxed ${resultBox}`}
             >
               {actionErr ? (
                 <div className="text-white/80">
-                  <div className="font-extrabold">⚠️ Error</div>
+                  <div className="font-extrabold">{t("result.errorTitle")}</div>
                   <div className="mt-1 text-white/70">{actionErr}</div>
                 </div>
               ) : !current?.result ? (
-                <div className="text-white/70">
-                  Submit your answer to get validation.
-                </div>
+                <div className="text-white/70">{t("result.submitToValidate")}</div>
               ) : (
                 <>
                   <div className="font-extrabold">
                     {current.revealed
-                      ? "👁️ Revealed (answer shown)"
+                      ? t("result.revealed")
                       : current.result.ok
-                      ? "✅ Correct"
-                      : "❌ Not quite"}
+                      ? t("result.correct")
+                      : t("result.incorrect")}
                   </div>
 
                   {current.result.explanation ? (
@@ -1152,7 +1163,7 @@ export default function PracticePage() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
           <div className="border-b border-white/10 bg-black/20 p-4">
             <div className="text-sm font-black">
-              {exercise?.title ?? (busy ? "Loading..." : "—")}
+              {exercise?.title ?? (busy ? t("status.loadingDots") : t("status.dash"))}
             </div>
             <div className="mt-1 text-sm text-white/80 break-words">
               <MathMarkdown
@@ -1167,7 +1178,7 @@ export default function PracticePage() {
           <div className="p-4">
             {loadErr ? (
               <div className="rounded-xl border border-rose-300/30 bg-rose-300/10 p-3 text-sm text-white/85">
-                <div className="font-black">Couldn’t load a question</div>
+                <div className="font-black">{t("loadError.title")}</div>
                 <div className="mt-1 text-xs text-white/70">{loadErr}</div>
                 <div className="mt-3 flex gap-2">
                   <button
@@ -1175,12 +1186,12 @@ export default function PracticePage() {
                     onClick={() => void loadNextExercise({ forceNew: true })}
                     disabled={busy}
                   >
-                    Retry
+                    {t("buttons.retry")}
                   </button>
                 </div>
               </div>
             ) : !current || !exercise ? (
-              <div className="text-white/70">Loading…</div>
+              <div className="text-white/70">{t("status.loading")}</div>
             ) : exercise.kind === "single_choice" ? (
               <div className="grid gap-2">
                 {exercise.options.map((o) => (
@@ -1240,33 +1251,37 @@ export default function PracticePage() {
 
                 <div className="grid grid-cols-[1fr_140px] items-center gap-2">
                   <div className="text-xs font-extrabold text-white/70">
-                    Your answer
+                    {t("answer.yourAnswer")}
                   </div>
                   <input
                     className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold tabular-nums text-white/90 outline-none"
                     value={current.num}
                     onChange={(e) => updateCurrent({ num: e.target.value })}
-                    placeholder="e.g. 3.5"
+                    placeholder={t("answer.placeholder")}
                   />
                 </div>
               </div>
             ) : exercise.kind === "vector_drag_target" ? (
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
-                  Drag <b>a</b> (blue) to match target <b>a*</b> ={" "}
-                  <span className="font-mono text-white/85">
-                    ({exercise.targetA.x}, {exercise.targetA.y})
-                  </span>{" "}
-                  within tolerance <b>{exercise.tolerance}</b>.
+                  {t("exercises.vectorDragTarget.instructions", {
+                    x: exercise.targetA.x,
+                    y: exercise.targetA.y,
+                    tolerance: exercise.tolerance,
+                  })}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
-                  <div className="font-extrabold text-white/70">Vector Pad</div>
+                  <div className="font-extrabold text-white/70">
+                    {t("vectorPad.title")}
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-mono">
-                      Grid: 1 sq = {gridLabelStep} units
-                      {gridMode === "auto" ? " • Auto" : " • Locked"}
+                      {t("vectorPad.gridBadge", {
+                        step: gridLabelStep,
+                        mode: gridModeSuffix,
+                      })}
                     </div>
 
                     <button
@@ -1281,7 +1296,7 @@ export default function PracticePage() {
                           : "border-white/10 bg-white/10 text-white/85"
                       }`}
                     >
-                      Auto
+                      {t("buttons.auto")}
                     </button>
 
                     <select
@@ -1295,7 +1310,7 @@ export default function PracticePage() {
                     >
                       {GRID_STEPS.map((s) => (
                         <option key={s} value={s}>
-                          1 sq = {s}
+                          {t("vectorPad.gridSelectOption", { step: s })}
                         </option>
                       ))}
                     </select>
@@ -1327,26 +1342,29 @@ export default function PracticePage() {
             ) : (
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
-                  Drag <b>a</b> so that <b>a · b</b> ≈{" "}
-                  <span className="font-mono text-white/85">
-                    {exercise.targetDot}
-                  </span>{" "}
-                  (tolerance <b>{exercise.tolerance}</b>).
+                  {t("exercises.vectorDragDot.instructions", {
+                    targetDot: exercise.targetDot,
+                    tolerance: exercise.tolerance,
+                  })}
                   <div className="mt-1 text-white/60">
-                    b is fixed:{" "}
-                    <span className="font-mono text-white/85">
-                      ({current.dragB.x}, {current.dragB.y})
-                    </span>
+                    {t("exercises.vectorDragDot.bFixed", {
+                      x: current.dragB.x,
+                      y: current.dragB.y,
+                    })}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60 mb-2">
-                  <div className="font-extrabold text-white/70">Vector Pad</div>
+                  <div className="font-extrabold text-white/70">
+                    {t("vectorPad.title")}
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-mono">
-                      Grid: 1 sq = {gridLabelStep} units
-                      {gridMode === "auto" ? " • Auto" : " • Locked"}
+                      {t("vectorPad.gridBadge", {
+                        step: gridLabelStep,
+                        mode: gridModeSuffix,
+                      })}
                     </div>
 
                     <button
@@ -1361,7 +1379,7 @@ export default function PracticePage() {
                           : "border-white/10 bg-white/10 text-white/85"
                       }`}
                     >
-                      Auto
+                      {t("buttons.auto")}
                     </button>
 
                     <select
@@ -1375,7 +1393,7 @@ export default function PracticePage() {
                     >
                       {GRID_STEPS.map((s) => (
                         <option key={s} value={s}>
-                          1 sq = {s}
+                          {t("vectorPad.gridSelectOption", { step: s })}
                         </option>
                       ))}
                     </select>
@@ -1397,16 +1415,15 @@ export default function PracticePage() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                     <div className="text-white/60 font-extrabold">
-                      a (current)
+                      {t("exercises.vectorDragDot.cards.aCurrent")}
                     </div>
                     <div className="font-mono text-white/85">
-                      ({current.dragA.x.toFixed(2)},{" "}
-                      {current.dragA.y.toFixed(2)})
+                      ({current.dragA.x.toFixed(2)}, {current.dragA.y.toFixed(2)})
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                     <div className="text-white/60 font-extrabold">
-                      a · b (current)
+                      {t("exercises.vectorDragDot.cards.dotCurrent")}
                     </div>
                     <div className="font-mono text-white/85">
                       {(
@@ -1421,8 +1438,7 @@ export default function PracticePage() {
           </div>
 
           <div className="border-t border-white/10 bg-black/10 p-3 text-xs text-white/55">
-            ← / → moves between loaded questions • Next loads a new question at
-            the end • Enter submits
+            {t("questionPanel.footerTip")}
           </div>
         </div>
       </div>
@@ -1430,7 +1446,7 @@ export default function PracticePage() {
   );
 }
 
-/* ---------- UI components (unchanged) ---------- */
+/* ---------- UI components ---------- */
 
 function CongratsCard({
   title,
@@ -1441,6 +1457,7 @@ function CongratsCard({
   subtitle: string;
   scoreLine: string;
 }) {
+  const tCards = useTranslations("Practice.summaryCards");
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
       <div className="border-b border-white/10 bg-black/20 p-5">
@@ -1450,28 +1467,30 @@ function CongratsCard({
 
       <div className="p-5">
         <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4">
-          <div className="text-xs text-white/70 font-extrabold">Score</div>
+          <div className="text-xs text-white/70 font-extrabold">
+            {tCards("score")}
+          </div>
           <div className="mt-1 text-base font-black text-white/90">
             {scoreLine}
           </div>
         </div>
 
-        <div className="mt-3 text-xs text-white/60">
-          Nice work. Review missed ones (below) to lock it in.
-        </div>
+        <div className="mt-3 text-xs text-white/60">{tCards("niceWork")}</div>
       </div>
     </div>
   );
 }
 
 function PracticeSummary({ missed }: { missed: MissedItem[] }) {
+  const tCards = useTranslations("Practice.summaryCards");
+
   if (!missed.length) {
     return (
       <div className="p-4">
         <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm">
-          <div className="font-black">Perfect run ✅</div>
+          <div className="font-black">{tCards("perfectRunTitle")}</div>
           <div className="mt-1 text-xs text-white/70">
-            You didn’t miss any questions in this session.
+            {tCards("perfectRunSubtitle")}
           </div>
         </div>
       </div>
@@ -1481,7 +1500,7 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
   return (
     <div className="p-4 grid gap-3">
       <div className="text-xs text-white/70 font-extrabold">
-        Missed ({missed.length})
+        {tCards("missedLabel", { count: missed.length })}
       </div>
 
       {missed.map((m) => (
@@ -1503,14 +1522,18 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
 
           <div className="mt-3 grid gap-2 text-xs">
             <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <div className="text-white/60 font-extrabold">Your answer</div>
+              <div className="text-white/60 font-extrabold">
+                {tCards("yourAnswer")}
+              </div>
               <pre className="mt-1 text-white/85 whitespace-pre-wrap break-words">
                 {JSON.stringify(m.userAnswer, null, 2)}
               </pre>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <div className="text-white/60 font-extrabold">Expected</div>
+              <div className="text-white/60 font-extrabold">
+                {tCards("expected")}
+              </div>
               <pre className="mt-1 text-white/85 whitespace-pre-wrap break-words">
                 {JSON.stringify(m.expected, null, 2)}
               </pre>
@@ -1518,7 +1541,9 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
 
             {m.explanation ? (
               <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="text-white/60 font-extrabold">Explanation</div>
+                <div className="text-white/60 font-extrabold">
+                  {tCards("explanation")}
+                </div>
                 <div className="mt-1 text-white/85 whitespace-pre-wrap break-words">
                   {m.explanation}
                 </div>
@@ -1532,10 +1557,11 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
 }
 
 function DetailsBlock({ value }: { value: any }) {
+  const t = useTranslations("Practice.answer");
   return (
     <details className="mt-2">
       <summary className="cursor-pointer text-white/60 hover:text-white/80">
-        Details
+        {t("details")}
       </summary>
       <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] text-white/75">
         {JSON.stringify(value, null, 2)}
@@ -1545,6 +1571,8 @@ function DetailsBlock({ value }: { value: any }) {
 }
 
 function ExpectedSummary({ result }: { result: any }) {
+  const t = useTranslations("Practice.expectedSummary");
+
   const exp = result?.expected;
   if (!exp) return null;
 
@@ -1557,7 +1585,7 @@ function ExpectedSummary({ result }: { result: any }) {
     return (
       <div className={card}>
         <div className={row}>
-          <div className={label}>Expected</div>
+          <div className={label}>{t("expected")}</div>
           <div className={mono}>
             {exp.value}
             {exp.tolerance ? ` ± ${exp.tolerance}` : ""}
@@ -1565,12 +1593,12 @@ function ExpectedSummary({ result }: { result: any }) {
         </div>
 
         <div className={row + " mt-1"}>
-          <div className={label}>You</div>
+          <div className={label}>{t("you")}</div>
           <div className={mono}>{exp.debug?.receivedValue ?? "—"}</div>
         </div>
 
         <div className={row + " mt-1"}>
-          <div className={label}>Δ</div>
+          <div className={label}>{t("delta")}</div>
           <div className={mono}>
             {typeof exp.debug?.delta === "number"
               ? exp.debug.delta.toFixed(4)
@@ -1587,11 +1615,11 @@ function ExpectedSummary({ result }: { result: any }) {
     return (
       <div className={card}>
         <div className={row}>
-          <div className={label}>Chosen</div>
+          <div className={label}>{t("chosen")}</div>
           <div className={mono}>{exp.debug?.chosen ?? "—"}</div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>Correct</div>
+          <div className={label}>{t("correct")}</div>
           <div className={mono}>{exp.optionId ?? "—"}</div>
         </div>
         <DetailsBlock value={exp} />
@@ -1603,26 +1631,26 @@ function ExpectedSummary({ result }: { result: any }) {
     return (
       <div className={card}>
         <div className={row}>
-          <div className={label}>Chosen</div>
+          <div className={label}>{t("chosen")}</div>
           <div className={mono}>
             {(exp.debug?.chosen ?? []).join(", ") || "—"}
           </div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>Correct</div>
+          <div className={label}>{t("correct")}</div>
           <div className={mono}>{(exp.optionIds ?? []).join(", ") || "—"}</div>
         </div>
         {exp.debug?.missing?.length || exp.debug?.extra?.length ? (
           <div className="mt-2 text-white/70">
             {exp.debug?.missing?.length ? (
               <div>
-                <span className="font-extrabold">Missing:</span>{" "}
+                <span className="font-extrabold">{t("missing")}</span>{" "}
                 {exp.debug.missing.join(", ")}
               </div>
             ) : null}
             {exp.debug?.extra?.length ? (
               <div>
-                <span className="font-extrabold">Extra:</span>{" "}
+                <span className="font-extrabold">{t("extra")}</span>{" "}
                 {exp.debug.extra.join(", ")}
               </div>
             ) : null}
@@ -1637,13 +1665,13 @@ function ExpectedSummary({ result }: { result: any }) {
     return (
       <div className={card}>
         <div className={row}>
-          <div className={label}>Target a*</div>
+          <div className={label}>{t("targetAStar")}</div>
           <div className={mono}>
             ({exp.targetA?.x ?? "—"}, {exp.targetA?.y ?? "—"})
           </div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>You</div>
+          <div className={label}>{t("you")}</div>
           <div className={mono}>
             {exp.debug?.receivedA
               ? `(${exp.debug.receivedA.x}, ${exp.debug.receivedA.y})`
@@ -1651,7 +1679,7 @@ function ExpectedSummary({ result }: { result: any }) {
           </div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>Tolerance</div>
+          <div className={label}>{t("tolerance")}</div>
           <div className={mono}>± {exp.tolerance}</div>
         </div>
         <DetailsBlock value={exp} />
@@ -1663,13 +1691,13 @@ function ExpectedSummary({ result }: { result: any }) {
     return (
       <div className={card}>
         <div className={row}>
-          <div className={label}>Target a·b</div>
+          <div className={label}>{t("targetDot")}</div>
           <div className={mono}>
             {exp.targetDot} ± {exp.tolerance}
           </div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>Your a·b</div>
+          <div className={label}>{t("yourDot")}</div>
           <div className={mono}>
             {typeof exp.debug?.dot === "number"
               ? exp.debug.dot.toFixed(4)
@@ -1677,12 +1705,12 @@ function ExpectedSummary({ result }: { result: any }) {
           </div>
         </div>
         <div className={row + " mt-1"}>
-          <div className={label}>|a|</div>
+          <div className={label}>{t("aMag")}</div>
           <div className={mono}>
             {typeof exp.debug?.aMag === "number"
               ? exp.debug.aMag.toFixed(4)
               : "—"}{" "}
-            (min {exp.minMag})
+            ({t("min")} {exp.minMag})
           </div>
         </div>
         <DetailsBlock value={exp} />
@@ -1692,7 +1720,7 @@ function ExpectedSummary({ result }: { result: any }) {
 
   return (
     <div className={card}>
-      <div className="text-white/70">Expected data available.</div>
+      <div className="text-white/70">{t("generic")}</div>
       <DetailsBlock value={exp} />
     </div>
   );

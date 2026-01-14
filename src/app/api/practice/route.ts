@@ -5,18 +5,20 @@ import { getExerciseWithExpected } from "@/lib/practice/generator";
 import { signPracticeKey } from "@/lib/practice/key";
 import { attachGuestCookie, ensureGuestId, getActor } from "@/lib/practice/actor";
 import type { Topic, Difficulty, Exercise } from "@/lib/practice/types";
-import { TOPICS, DIFFICULTIES, asTopicOrAll, asDifficultyOrAll, pick } from "@/lib/practice/catalog";
+import {
+  TOPICS,
+  DIFFICULTIES,
+  asTopicOrAll,
+  asDifficultyOrAll,
+  pick,
+} from "@/lib/practice/catalog";
 import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Small helper so you never forget cookies again
-function withGuestCookie<T>(
-  body: T,
-  status: number,
-  setGuestId: string | undefined
-) {
+function withGuestCookie<T>(body: T, status: number, setGuestId: string | undefined) {
   const res = NextResponse.json(body as any, { status });
   return attachGuestCookie(res, setGuestId);
 }
@@ -64,6 +66,38 @@ function signKey(args: {
   });
 }
 
+/**
+ * Strict session ownership:
+ * - If the session has no owner -> error
+ * - If session is user-owned -> actor.userId must match
+ * - If session is guest-owned -> actor.guestId must match
+ */
+function assertOwnsSessionOrThrow(args: {
+  sessionUserId: string | null;
+  sessionGuestId: string | null;
+  actorUserId: string | null;
+  actorGuestId: string | null;
+}) {
+  const { sessionUserId, sessionGuestId, actorUserId, actorGuestId } = args;
+
+  if (!sessionUserId && !sessionGuestId) {
+    return { ok: false as const, status: 500, body: { message: "Session has no owner.", code: "SESSION_UNOWNED" } };
+  }
+
+  if (sessionUserId) {
+    if (!actorUserId || sessionUserId !== actorUserId) {
+      return { ok: false as const, status: 403, body: { message: "Forbidden." } };
+    }
+    return { ok: true as const };
+  }
+
+  // guest-owned
+  if (!actorGuestId || sessionGuestId !== actorGuestId) {
+    return { ok: false as const, status: 403, body: { message: "Forbidden." } };
+  }
+  return { ok: true as const };
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -108,12 +142,15 @@ export async function GET(req: Request) {
         return withGuestCookie({ message: "Session is not active." }, 400, setGuestId);
       }
 
-      // ownership check (user OR guest)
-      if (
-        (session.userId && session.userId !== (actor.userId ?? null)) ||
-        (session.guestId && session.guestId !== (actor.guestId ?? null))
-      ) {
-        return withGuestCookie({ message: "Forbidden." }, 403, setGuestId);
+      // ✅ strict ownership check (fixes “everyone shares same session”)
+      const owns = assertOwnsSessionOrThrow({
+        sessionUserId: session.userId ?? null,
+        sessionGuestId: session.guestId ?? null,
+        actorUserId: actor.userId ?? null,
+        actorGuestId: actor.guestId ?? null,
+      });
+      if (!owns.ok) {
+        return withGuestCookie(owns.body, owns.status, setGuestId);
       }
 
       const now = new Date();
@@ -125,12 +162,12 @@ export async function GET(req: Request) {
       // Assignment session rules
       // ----------------------------
       if (session.assignmentId) {
+        // ✅ assignments require subscription, so confirm entitlement
         const gate = await requireEntitledUser();
-        // IMPORTANT: still attach guest cookie if one was created
-        if (!gate.ok) {
-          return attachGuestCookie(gate.res, setGuestId);
-        }
-        if (session.userId && session.userId !== gate.userId) {
+        if (!gate.ok) return attachGuestCookie(gate.res, setGuestId);
+
+        // ✅ assignment sessions MUST be owned by this entitled user
+        if (!session.userId || session.userId !== gate.userId) {
           return withGuestCookie({ message: "Forbidden." }, 403, setGuestId);
         }
 
@@ -147,11 +184,9 @@ export async function GET(req: Request) {
           return withGuestCookie({ message: "Assignment is past due." }, 400, setGuestId);
         }
 
-        // make sure it’s mutable + typed
         const allowedTopics = Array.from(a.topics ?? []) as Topic[];
         topic = allowedTopics.length ? pick(allowedTopics) : pick(TOPICS);
 
-        // if DB can ever be null, fallback
         difficulty = (a.difficulty as Difficulty) ?? pick(DIFFICULTIES);
       } else {
         // ----------------------------
@@ -167,11 +202,7 @@ export async function GET(req: Request) {
       const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
 
       if (!exercise || typeof (exercise as any).kind !== "string") {
-        return withGuestCookie(
-          { message: "Generator returned invalid exercise." },
-          500,
-          setGuestId
-        );
+        return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
       }
 
       const instance = await createInstance({
@@ -182,7 +213,7 @@ export async function GET(req: Request) {
         difficulty,
       });
 
-      // optional: track last instance
+      // optional: track last instance (don’t block response if this fails)
       prisma.practiceSession
         .update({ where: { id: session.id }, data: { lastInstanceId: instance.id } })
         .catch(() => {});
@@ -216,8 +247,7 @@ export async function GET(req: Request) {
     const difficultyOrAll = asDifficultyOrAll(searchParams.get("difficulty"));
 
     const topic: Topic = topicOrAll === "all" ? pick(TOPICS) : topicOrAll;
-    const difficulty: Difficulty =
-      difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
+    const difficulty: Difficulty = difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
 
     const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
 

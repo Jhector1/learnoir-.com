@@ -1,0 +1,24 @@
+{
+  "Header": {
+        "language": "Lang",
+
+    "home": "Akèy",
+    "practice": "Pratik",
+    "assignments": "Devwa",
+    "tagline": "Matematik vizyèl • Pratik • Pwogrè",
+    "startSession": "Kòmanse",
+    "signIn": "Konekte",
+    "profile": "Pwofil",
+    "logout": "Dekonekte",
+    "menu": "Meni",
+    "close": "Fèmen",
+    "tip": "Konsèy: itilize Pratik pou swiv tantativ ou yo, repons ou jwenn kòrèk, ak kestyon ou rate yo."
+  },
+    "UserMenu": {
+    "ariaLabel": "Meni itilizatè",
+    "avatarAlt": "Imaj pwofil {name}",
+    "profile": "Pwofil",
+    "progress": "Pwogrè",
+    "logout": "Dekonekte"
+  }
+}

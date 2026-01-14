@@ -1,0 +1,26 @@
+{
+"Header": {
+      "language": "Langue"
+,
+    "home": "Accueil",
+    "practice": "Exercices",
+    "assignments": "Devoirs",
+    "tagline": "Math visuelle • Exercices • Progrès",
+    "startSession": "Commencer",
+    "signIn": "Se connecter",
+    "profile": "Profil",
+    "logout": "Se déconnecter",
+    "menu": "Menu",
+    "close": "Fermer",
+    "tip": "Astuce : utilisez Exercices pour suivre vos tentatives, vos bonnes réponses et vos questions manquées."
+  },
+  
+  "UserMenu": {
+    "ariaLabel": "Menu utilisateur",
+    "avatarAlt": "Avatar de {name}",
+    "profile": "Profil",
+    "progress": "Progrès",
+    "logout": "Se déconnecter"
+  }
+ 
+}

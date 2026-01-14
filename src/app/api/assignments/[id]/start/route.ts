@@ -15,10 +15,13 @@ export async function POST(
   const ensured = ensureGuestId(actor0);
   const actor = ensured.actor;
   const setGuestId = ensured.setGuestId ?? null;
-  console.log("actor:", actor, actor0, ensured);
+  // console.log("actor:", actor, actor0, ensured);
   // ✅ hard-block if not subscribed
   const gate = await requireEntitledUser();
-  if (!gate.ok) return gate.res;
+   if (!gate.ok) {
+    // ✅ keep guest cookie behavior consistent
+    return attachGuestCookie(gate.res, setGuestId);
+  }
   const now = new Date();
 
   const assignment = await prisma.assignment.findUnique({
@@ -53,7 +56,9 @@ export async function POST(
     const used = await prisma.practiceSession.count({
       where: {
         assignmentId: assignment.id,
-        ...(actor.userId ? { userId: actor.userId } : { guestId: actor.guestId }),
+            userId: gate.userId, // ✅ count attempts per entitled user
+
+        // ...(actor.userId ? { userId: actor.userId } : { guestId: actor.guestId }),
       },
     });
     if (used >= assignment.maxAttempts) {
@@ -69,7 +74,7 @@ export async function POST(
       difficulty: assignment.difficulty,
       targetCount: assignment.questionCount,
       userId: actor.userId ?? null,
-      guestId: actor.guestId ?? null,
+      guestId:  null,
     },
     select: { id: true },
   });

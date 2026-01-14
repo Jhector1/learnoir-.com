@@ -16,6 +16,7 @@ import {
 import type { VectorPadState } from "./types";
 
 type Handles = { a?: boolean; b?: boolean };
+type Visibility = { a?: boolean; b?: boolean };
 
 type Overlay2DArgs = {
   s: p5;
@@ -36,12 +37,17 @@ type Props = {
   mode: Mode;
   stateRef: React.MutableRefObject<VectorPadState>;
   zHeldRef: React.MutableRefObject<boolean>;
+
+  // dragging control (hit testing)
   handles?: Handles;
+
+  // visibility control (render + hit testing)
+  visible?: Visibility;
 
   onPreview?: (a: Vec3, b: Vec3) => void;
   onCommit?: (a: Vec3, b: Vec3) => void;
 
-  // ✅ sync wheel zoom back to React slider
+  // sync wheel zoom back to React slider
   onScaleChange?: (nextScale: number) => void;
 
   previewThrottleMs?: number;
@@ -56,6 +62,7 @@ export default function VectorPad({
   stateRef,
   zHeldRef,
   handles,
+  visible,
   onPreview,
   onCommit,
   onScaleChange,
@@ -73,6 +80,14 @@ export default function VectorPad({
       b: handles?.b ?? true,
     }),
     [handles]
+  );
+
+  const visibleMemo = useMemo(
+    () => ({
+      a: visible?.a ?? true,
+      b: visible?.b ?? true,
+    }),
+    [visible]
   );
 
   const lastPreview = useRef<number>(0);
@@ -116,7 +131,7 @@ export default function VectorPad({
 
       if (p5Ref.current) {
         try {
-          p5Ref.current.remove(); // ✅ will now properly remove canvas
+          p5Ref.current.remove();
         } catch {}
         p5Ref.current = null;
       }
@@ -126,16 +141,19 @@ export default function VectorPad({
 
       const create2DSketch = () => (s: p5) => {
         let canvasEl: HTMLCanvasElement | null = null;
+        let wheelBlocker: ((e: WheelEvent) => void) | null = null;
+
+        let W = 800;
+        let H = 600;
+
         const isMouseOverCanvas = () =>
           s.mouseX >= 0 && s.mouseX <= W && s.mouseY >= 0 && s.mouseY <= H;
-        // wheel blocker that we can remove (no memory leaks)
-        let wheelBlocker: ((e: WheelEvent) => void) | null = null;
 
         const applyZoom = (factor: number) => {
           const st = stateRef.current;
           const next = clamp(st.scale * factor, 20, 280);
           st.scale = next;
-          onScaleChange?.(next); // ✅ sync React slider
+          onScaleChange?.(next);
         };
 
         const getSize = () => {
@@ -143,9 +161,6 @@ export default function VectorPad({
           const r = el.getBoundingClientRect();
           return { w: Math.max(320, r.width), h: Math.max(320, r.height) };
         };
-
-        let W = 800;
-        let H = 600;
 
         const origin = () => ({ x: W / 2, y: H / 2 });
 
@@ -166,7 +181,7 @@ export default function VectorPad({
           };
         };
 
-        // ✅ nice auto grid step (2D)
+        // nice step
         const niceStep = (raw: number) => {
           if (!Number.isFinite(raw) || raw <= 0) return 1;
           const pow10 = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -411,32 +426,30 @@ export default function VectorPad({
           const renderer = s.createCanvas(W, H);
           canvasEl = renderer.elt as HTMLCanvasElement;
 
-          // block page scroll while over canvas (but removable!)
+          // block page scroll while over canvas (removable)
           wheelBlocker = (e: WheelEvent) => e.preventDefault();
           canvasEl.addEventListener("wheel", wheelBlocker, { passive: false });
 
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-          //   canvasEl.focus?.();
           (canvasEl as any).focus?.({ preventScroll: true });
 
           s.textFont(
             "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
           );
 
-          // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
+          // wrap p5 remove() so we can remove listeners too
           const originalRemove = (s as any).remove?.bind(s);
           (s as any).remove = () => {
             if (canvasEl && wheelBlocker) {
               canvasEl.removeEventListener("wheel", wheelBlocker);
             }
-            originalRemove?.(); // ✅ actually removes the canvas + sketch
+            originalRemove?.();
           };
         };
 
         s.mouseWheel = (evt: any) => {
-          // ✅ only zoom when cursor is over the canvas
           if (!isMouseOverCanvas()) return true;
           evt?.preventDefault?.();
           const delta = evt?.deltaY ?? 0;
@@ -463,23 +476,30 @@ export default function VectorPad({
 
           overlay2DRef.current?.({ s, W, H, origin, worldToScreen2 });
 
-          drawUnitB(bV);
-          drawComponents(aV, "rgba(122,162,255,0.55)");
-          drawComponents(bV, "rgba(255,107,214,0.55)");
-          drawProjection(aV, bV);
-          drawAngleArc(aV, bV);
+          // only show extras if b is visible (and only compute angle/proj if both visible)
+          if (visibleMemo.b) drawUnitB(bV);
+          if (visibleMemo.a) drawComponents(aV, "rgba(122,162,255,0.55)");
+          if (visibleMemo.b) drawComponents(bV, "rgba(255,107,214,0.55)");
+          if (visibleMemo.a && visibleMemo.b) {
+            drawProjection(aV, bV);
+            drawAngleArc(aV, bV);
+          }
 
-          drawArrow(o, worldToScreen2(aV), COLORS.a, 4);
-          drawArrow(o, worldToScreen2(bV), COLORS.b, 4);
+          if (visibleMemo.a) drawArrow(o, worldToScreen2(aV), COLORS.a, 4);
+          if (visibleMemo.b) drawArrow(o, worldToScreen2(bV), COLORS.b, 4);
 
-          drawHandle(
-            worldToScreen2(aV),
-            handlesMemo.a ? COLORS.a : "rgba(122,162,255,0.25)"
-          );
-          drawHandle(
-            worldToScreen2(bV),
-            handlesMemo.b ? COLORS.b : "rgba(255,107,214,0.25)"
-          );
+          if (visibleMemo.a) {
+            drawHandle(
+              worldToScreen2(aV),
+              handlesMemo.a ? COLORS.a : "rgba(122,162,255,0.25)"
+            );
+          }
+          if (visibleMemo.b) {
+            drawHandle(
+              worldToScreen2(bV),
+              handlesMemo.b ? COLORS.b : "rgba(255,107,214,0.25)"
+            );
+          }
 
           s.push();
           s.noStroke();
@@ -498,8 +518,10 @@ export default function VectorPad({
           const my = s.mouseY;
           const r2 = 14 * 14;
 
-          const hitA = handlesMemo.a && dist2(mx, my, aTip.x, aTip.y) <= r2;
-          const hitB = handlesMemo.b && dist2(mx, my, bTip.x, bTip.y) <= r2;
+          const hitA =
+            visibleMemo.a && handlesMemo.a && dist2(mx, my, aTip.x, aTip.y) <= r2;
+          const hitB =
+            visibleMemo.b && handlesMemo.b && dist2(mx, my, bTip.x, bTip.y) <= r2;
 
           canvasEl?.focus();
 
@@ -535,6 +557,9 @@ export default function VectorPad({
         let canvasEl: HTMLCanvasElement | null = null;
         let wheelBlocker: ((e: WheelEvent) => void) | null = null;
 
+        let W = 800;
+        let H = 600;
+
         const applyZoom = (factor: number) => {
           const st = stateRef.current;
           const next = clamp(st.scale * factor, 20, 280);
@@ -548,16 +573,12 @@ export default function VectorPad({
           return { w: Math.max(320, r.width), h: Math.max(320, r.height) };
         };
 
-        let W = 800;
-        let H = 600;
-
         type DragTarget = "a" | "b" | null;
         let dragging: DragTarget = null;
         let lastMouse: { x: number; y: number } | null = null;
 
         const dragSpeed = () => 1 / Math.max(20, stateRef.current.scale);
 
-        // ✅ nice auto grid step (3D)
         const niceStep = (raw: number) => {
           if (!Number.isFinite(raw) || raw <= 0) return 1;
           const pow10 = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -588,7 +609,6 @@ export default function VectorPad({
           };
         };
 
-        // ---- robust 3D->2D for picking ----
         const normalizeToTopLeft = (pt: { x: number; y: number }) => {
           if (
             pt.x >= -W / 2 &&
@@ -830,6 +850,9 @@ export default function VectorPad({
           );
         };
 
+        const isMouseOverCanvas = () =>
+          s.mouseX >= 0 && s.mouseX <= W && s.mouseY >= 0 && s.mouseY <= H;
+
         s.setup = () => {
           const { w, h } = getSize();
           W = w;
@@ -846,26 +869,19 @@ export default function VectorPad({
           canvasEl.style.touchAction = "none";
           canvasEl.tabIndex = 0;
           canvasEl.style.outline = "none";
-          //   canvasEl.focus?.();
           (canvasEl as any).focus?.({ preventScroll: true });
 
-          // ✅ FIX: wrap p5's original remove() (DON'T overwrite it)
           const originalRemove = (s as any).remove?.bind(s);
           (s as any).remove = () => {
             if (canvasEl && wheelBlocker) {
               canvasEl.removeEventListener("wheel", wheelBlocker);
             }
-            originalRemove?.(); // ✅ actually removes the canvas + sketch
+            originalRemove?.();
           };
         };
 
-        const isMouseOverCanvas = () =>
-          s.mouseX >= 0 && s.mouseX <= W && s.mouseY >= 0 && s.mouseY <= H;
-
         s.mouseWheel = (evt: any) => {
-          // ✅ only zoom when cursor is over the canvas
           if (!isMouseOverCanvas()) return true;
-
           evt?.preventDefault?.();
           const delta = evt?.deltaY ?? 0;
           applyZoom(delta > 0 ? 0.92 : 1.08);
@@ -898,19 +914,21 @@ export default function VectorPad({
           drawAxis();
           overlay3DRef.current?.({ s, W, H, labelAt });
 
-          drawVector(A, COLORS.a);
-          drawVector(B, COLORS.b);
-          drawUnitB3D(B);
+          if (visibleMemo.a) drawVector(A, COLORS.a);
+          if (visibleMemo.b) drawVector(B, COLORS.b);
+          if (visibleMemo.b) drawUnitB3D(B);
 
-          drawShadowOnB(A, B);
-          drawProjection3D(A, B);
+          if (visibleMemo.a && visibleMemo.b) {
+            drawShadowOnB(A, B);
+            drawProjection3D(A, B);
+          }
 
-          drawHandleSphere(A, COLORS.a);
-          drawHandleSphere(B, COLORS.b);
+          if (visibleMemo.a) drawHandleSphere(A, COLORS.a);
+          if (visibleMemo.b) drawHandleSphere(B, COLORS.b);
 
           const sc = st.scale;
-          labelAt(A.x * sc, -A.y * sc, A.z * sc, "a", COLORS.a);
-          labelAt(B.x * sc, -B.y * sc, B.z * sc, "b", COLORS.b);
+          if (visibleMemo.a) labelAt(A.x * sc, -A.y * sc, A.z * sc, "a", COLORS.a);
+          if (visibleMemo.b) labelAt(B.x * sc, -B.y * sc, B.z * sc, "b", COLORS.b);
 
           s.push();
           s.resetMatrix();
@@ -939,15 +957,19 @@ export default function VectorPad({
           const st = stateRef.current;
           const sc = st.scale;
 
-          const aS = worldToScreen(st.a.x * sc, -st.a.y * sc, st.a.z * sc);
-          const bS = worldToScreen(st.b.x * sc, -st.b.y * sc, st.b.z * sc);
+          const aS = visibleMemo.a
+            ? worldToScreen(st.a.x * sc, -st.a.y * sc, st.a.z * sc)
+            : null;
+          const bS = visibleMemo.b
+            ? worldToScreen(st.b.x * sc, -st.b.y * sc, st.b.z * sc)
+            : null;
 
           const mTL = normalizeToTopLeft({ x: s.mouseX, y: s.mouseY });
           const mx = mTL.x;
           const my = mTL.y;
 
-          const hitA = handlesMemo.a && isNear(aS, mx, my, 22);
-          const hitB = handlesMemo.b && isNear(bS, mx, my, 22);
+          const hitA = visibleMemo.a && handlesMemo.a && isNear(aS, mx, my, 22);
+          const hitB = visibleMemo.b && handlesMemo.b && isNear(bS, mx, my, 22);
 
           if (hitA && hitB) {
             const da = (aS!.sx - mx) ** 2 + (aS!.sy - my) ** 2;
@@ -970,10 +992,7 @@ export default function VectorPad({
           lastMouse = { x: s.mouseX, y: s.mouseY };
 
           const shiftDown =
-            !!evt?.shiftKey ||
-            (s as any).keyIsDown?.(16) ||
-            (s as any).keyIsDown?.(16) ||
-            s.keyIsDown(16);
+            !!evt?.shiftKey || (s as any).keyIsDown?.(16) || s.keyIsDown(16);
 
           const zDown =
             st.depthMode || zHeldRef.current || (s as any).keyIsDown?.(90);
@@ -1013,14 +1032,20 @@ export default function VectorPad({
       cancelled = true;
       if (p5Ref.current) {
         try {
-          p5Ref.current.remove(); // ✅ now removes old canvas correctly
+          p5Ref.current.remove();
         } catch {}
         p5Ref.current = null;
       }
     };
-  }, [mode, previewThrottleMs, handlesMemo.a, handlesMemo.b, onScaleChange]);
+  }, [
+    mode,
+    previewThrottleMs,
+    handlesMemo.a,
+    handlesMemo.b,
+    visibleMemo.a,
+    visibleMemo.b,
+    onScaleChange,
+  ]);
 
-  return (
-    <div ref={mountRef} className={className ?? "relative h-full w-full"} />
-  );
+  return <div ref={mountRef} className={className ?? "relative h-full w-full"} />;
 }

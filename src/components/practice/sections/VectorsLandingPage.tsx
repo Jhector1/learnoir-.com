@@ -1,70 +1,64 @@
-
-// ✅ Matches your Practice theme (radial bg, white/10 borders, glass cards, emerald/sky accents)
-// - Two cards: Part 1 + Part 2
-// - Each has: “Read material” + “Practice now”
-// - Uses $$ ... $$-friendly text elsewhere (no math needed here)
+// src/app/[locale]/practice/page.tsx
+"use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
+
+type PartId = "part-1" | "part-2";
 
 type Part = {
-  id: "part-1" | "part-2";
-  badge: string;
-  title: string;
-  subtitle: string;
+  id: PartId;
+  badgeKey: string;
+  titleKey: string;
+  subtitleKey: string;
   learnHref: string;
   practiceHref: string;
-  bullets: string[];
+  bulletsCount: number; // we’ll read bullets as an indexed list
 };
 
 const parts: Part[] = [
   {
     id: "part-1",
-    badge: "Start here",
-    title: "Vectors — Part 1",
-    subtitle: "Foundations, geometry intuition, NumPy shapes, and core operations",
+    badgeKey: "parts.part1.badge",
+    titleKey: "parts.part1.title",
+    subtitleKey: "parts.part1.subtitle",
     learnHref: "/practice/review/vectors_part1",
-    practiceHref: "/practice?section=module-0-vectors-part-1&difficulty=all&topic=vectors_part1",
-    bullets: [
-      "Vector meaning (algebra vs geometry) and ℝⁿ notation",
-      "Row vs column orientation + transpose (why it matters)",
-      "NumPy representations: (n,), (1,n), (n,1) + shape intuition",
-      "Add/subtract, scalar multiply (lists vs arrays gotcha)",
-      "Magnitude (norm) + unit vectors",
-      "Dot product: compute + interpret sign/angle",
-      "Hadamard vs dot vs outer product (what you get)",
-      "Projection idea (setup for decompositions)",
-    ],
+    practiceHref:
+      "/practice?section=module-0-vectors-part-1&difficulty=all&topic=vectors_part1",
+    bulletsCount: 8,
   },
   {
     id: "part-2",
-    badge: "Next",
-    title: "Vectors — Part 2",
-    subtitle: "Linear combinations → independence → span/subspace → basis",
+    badgeKey: "parts.part2.badge",
+    titleKey: "parts.part2.title",
+    subtitleKey: "parts.part2.subtitle",
     learnHref: "/practice/review/vectors_part2",
-    practiceHref: "/practice?section=module-0-vectors-part-2&difficulty=all&topic=vectors_part2",
-    bullets: [
-      "Finite vs infinite vs empty vector sets",
-      "Linear weighted combinations (component-wise)",
-      "Independent vs dependent (including zero-vector rule)",
-      "Span (line vs all of ℝ²) and dimension intuition",
-      "Subspace tests: 0 vector + closure rules",
-      "Basis checks (ℝ² det ≠ 0 intuition)",
-      "Coordinates in a basis (solve for c₁, c₂)",
-      "Connect to projection + orthogonal decomposition",
-    ],
+    practiceHref:
+      "/practice?section=module-0-vectors-part-2&difficulty=all&topic=vectors_part2",
+    bulletsCount: 8,
   },
 ];
 
 function PartCard({ part }: { part: Part }) {
+  const t = useTranslations("VectorsLanding");
+
+  const badge = t(part.badgeKey as any);
+  const title = t(part.titleKey as any);
+  const subtitle = t(part.subtitleKey as any);
+
+  const bullets = Array.from({ length: part.bulletsCount }, (_, i) =>
+    t(`parts.${part.id === "part-1" ? "part1" : "part2"}.bullets.${i}` as any)
+  );
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 md:p-5">
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-lg font-black tracking-tight text-white/90">
-              {part.title}
+              {title}
             </div>
-            <div className="mt-1 text-sm text-white/70">{part.subtitle}</div>
+            <div className="mt-1 text-sm text-white/70">{subtitle}</div>
           </div>
 
           <span
@@ -75,14 +69,16 @@ function PartCard({ part }: { part: Part }) {
                 : "border-sky-300/30 bg-sky-300/10 text-white",
             ].join(" ")}
           >
-            {part.badge}
+            {badge}
           </span>
         </div>
 
         <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-3">
-          <div className="text-xs font-extrabold text-white/70">What you’ll learn</div>
+          <div className="text-xs font-extrabold text-white/70">
+            {t("whatYouLearn")}
+          </div>
           <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-white/70">
-            {part.bullets.map((b, i) => (
+            {bullets.map((b, i) => (
               <li key={i}>{b}</li>
             ))}
           </ul>
@@ -93,7 +89,7 @@ function PartCard({ part }: { part: Part }) {
             href={part.learnHref}
             className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15"
           >
-            Read material
+            {t("readMaterial")}
           </Link>
 
           <Link
@@ -105,19 +101,19 @@ function PartCard({ part }: { part: Part }) {
                 : "border-sky-300/30 bg-sky-300/10 text-white hover:bg-sky-300/15",
             ].join(" ")}
           >
-            Practice now
+            {t("practiceNow")}
           </Link>
         </div>
 
-        <div className="text-xs text-white/50">
-          “Practice now” opens a pre-filtered practice session for this part.
-        </div>
+        <div className="text-xs text-white/50">{t("practiceNowHint")}</div>
       </div>
     </div>
   );
 }
 
 export default function VectorsLandingPage() {
+  const t = useTranslations("VectorsLanding");
+
   return (
     <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
       <div className="mx-auto max-w-5xl">
@@ -125,11 +121,10 @@ export default function VectorsLandingPage() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 md:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <div className="text-lg font-black tracking-tight">Vectors</div>
-              <div className="mt-1 text-sm text-white/70">
-                Two-part track: Part 1 builds the fundamentals; Part 2 builds the linear algebra core
-                (combinations → independence → span/subspace → basis).
+              <div className="text-lg font-black tracking-tight">
+                {t("pageTitle")}
               </div>
+              <div className="mt-1 text-sm text-white/70">{t("pageIntro")}</div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -137,14 +132,14 @@ export default function VectorsLandingPage() {
                 href="/practice?section=module-0-vectors-part-1&difficulty=easy&topic=vectors_part1"
                 className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold text-white hover:bg-emerald-300/15"
               >
-                Quick start • Part 1 • Easy
+                {t("quickStartPart1Easy")}
               </Link>
 
               <Link
                 href="/practice?section=module-0-vectors-part-2&difficulty=easy&topic=vectors_part2"
                 className="rounded-xl border border-sky-300/30 bg-sky-300/10 px-3 py-2 text-xs font-extrabold text-white hover:bg-sky-300/15"
               >
-                Jump • Part 2 • Easy
+                {t("jumpPart2Easy")}
               </Link>
             </div>
           </div>
@@ -159,35 +154,27 @@ export default function VectorsLandingPage() {
 
         {/* recommended path */}
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 md:p-5">
-          <div className="text-sm font-black text-white/90">Recommended path</div>
+          <div className="text-sm font-black text-white/90">
+            {t("recommendedPathTitle")}
+          </div>
 
           <ol className="mt-3 space-y-2 text-sm text-white/70">
             <li className="flex gap-2">
               <span className="font-extrabold text-white/90">1.</span>
-              <span>
-                Do <span className="font-extrabold text-white/90">Part 1</span> until orientation,
-                shapes, norm/unit vectors, and dot product feel automatic.
-              </span>
+              <span>{t("recommended.0")}</span>
             </li>
             <li className="flex gap-2">
               <span className="font-extrabold text-white/90">2.</span>
-              <span>
-                Move to <span className="font-extrabold text-white/90">Part 2</span> to master
-                independence/span/basis (these unlock everything later).
-              </span>
+              <span>{t("recommended.1")}</span>
             </li>
             <li className="flex gap-2">
               <span className="font-extrabold text-white/90">3.</span>
-              <span>
-                Revisit dot-product geometry whenever projection/decomposition feels “mystical.”
-              </span>
+              <span>{t("recommended.2")}</span>
             </li>
           </ol>
         </div>
 
-        <div className="mt-4 text-xs text-white/50">
-          If your material route isn’t <code>/learn</code>, just swap the <code>learnHref</code> links.
-        </div>
+        <div className="mt-4 text-xs text-white/50">{t("routeHint")}</div>
       </div>
     </div>
   );

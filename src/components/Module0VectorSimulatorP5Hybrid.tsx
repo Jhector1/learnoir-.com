@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
+import { useTranslations } from "next-intl";
+
 import type { Mode, Vec3 } from "@/lib/math/vec3";
 import {
   COLORS,
@@ -37,6 +39,8 @@ export default function Module0VectorSimulatorP5Hybrid({
 }: {
   mode?: Mode;
 }) {
+  const t = useTranslations("Module0");
+
   // ✅ Z key tracking shared (deduped)
   const { zHeldRef, zKeyUI } = useZHeldRef();
 
@@ -62,9 +66,10 @@ export default function Module0VectorSimulatorP5Hybrid({
   const [qType, setQType] = useState<QuestionType>("dot");
   const [answerText, setAnswerText] = useState("");
   const [question, setQuestion] = useState<Question | null>(null);
+
   const [status, setStatus] = useState<{ kind: StatusKind; msg: string }>({
     kind: "idle",
-    msg: "Click “New question”. Use overlays to reason visually, then answer.",
+    msg: t("status.idle"),
   });
 
   // ✅ Single source of truth for VectorPad (DO NOT overwrite object during drag)
@@ -213,33 +218,33 @@ export default function Module0VectorSimulatorP5Hybrid({
 
     switch (type) {
       case "dot":
-        prompt = "Compute the dot product a · b";
+        prompt = t("questions.dot");
         correct = dot(A, B);
         tol = 0.25;
         break;
       case "angle":
-        prompt = "Compute the angle θ between a and b (degrees)";
+        prompt = t("questions.angle");
         correct = angDeg;
         unit = "°";
         tol = 1.0;
         break;
       case "scalarProj":
-        prompt = "Compute the scalar projection of a on b (shadow length on b)";
+        prompt = t("questions.scalarProj");
         correct = sp;
         tol = 0.25;
         break;
       case "projX":
-        prompt = "Compute the x-component of proj_b(a)";
+        prompt = t("questions.projX");
         correct = pr.x;
         tol = 0.25;
         break;
       case "projY":
-        prompt = "Compute the y-component of proj_b(a)";
+        prompt = t("questions.projY");
         correct = pr.y;
         tol = 0.25;
         break;
       case "projZ":
-        prompt = "Compute the z-component of proj_b(a)";
+        prompt = t("questions.projZ");
         correct = pr.z;
         tol = 0.25;
         break;
@@ -263,7 +268,11 @@ export default function Module0VectorSimulatorP5Hybrid({
     setAnswerText("");
     setStatus({
       kind: "idle",
-      msg: `Question: ${q.prompt}. Enter a number (tolerance ±${q.tolerance}${q.unit ?? ""}).`,
+      msg: t("status.question", {
+        prompt: q.prompt,
+        tolerance: String(q.tolerance),
+        unit: q.unit ?? "",
+      }),
     });
   }
 
@@ -275,28 +284,34 @@ export default function Module0VectorSimulatorP5Hybrid({
 
   function onCheck() {
     if (!question) {
-      setStatus({ kind: "bad", msg: "No active question. Click “New question” first." });
+      setStatus({ kind: "bad", msg: t("status.noQuestion") });
       return;
     }
-    const user = parseAnswer(answerText);
-    if (!Number.isFinite(user)) {
-      setStatus({ kind: "bad", msg: "Please enter a valid number (e.g., 3.5 or -2)." });
+    const userVal = parseAnswer(answerText);
+    if (!Number.isFinite(userVal)) {
+      setStatus({ kind: "bad", msg: t("status.invalidNumber") });
       return;
     }
-    const ok = Math.abs(user - question.correct) <= question.tolerance;
+    const ok = Math.abs(userVal - question.correct) <= question.tolerance;
     setStatus(
       ok
-        ? { kind: "good", msg: `✅ Correct. ${user} is within tolerance.` }
-        : { kind: "bad", msg: `❌ Not quite. You said ${user}. Try again using the overlays.` }
+        ? { kind: "good", msg: t("status.correct", { value: String(userVal) }) }
+        : { kind: "bad", msg: t("status.incorrect", { value: String(userVal) }) }
     );
   }
 
   function onReveal() {
     if (!question) {
-      setStatus({ kind: "bad", msg: "No question to reveal. Click “New question” first." });
+      setStatus({ kind: "bad", msg: t("status.noReveal") });
       return;
     }
-    setStatus({ kind: "good", msg: `Answer: ${question.correct.toFixed(3)}${question.unit ?? ""}` });
+    setStatus({
+      kind: "good",
+      msg: t("status.answer", {
+        value: question.correct.toFixed(3),
+        unit: question.unit ?? "",
+      }),
+    });
   }
 
   function randomizeVectors() {
@@ -312,7 +327,7 @@ export default function Module0VectorSimulatorP5Hybrid({
     stateRef.current.b = B;
     setA(A);
     setB(B);
-    setStatus({ kind: "idle", msg: "Randomized vectors. Drag tips to explore." });
+    setStatus({ kind: "idle", msg: t("status.randomized") });
   }
 
   function resetVectors() {
@@ -322,21 +337,21 @@ export default function Module0VectorSimulatorP5Hybrid({
     stateRef.current.b = B;
     setA(A);
     setB(B);
-    setStatus({ kind: "idle", msg: "Reset to default vectors." });
+    setStatus({ kind: "idle", msg: t("status.reset") });
   }
 
   function zeroA() {
     const A: Vec3 = { x: 0, y: 0, z: 0 };
     stateRef.current.a = A;
     setA(A);
-    setStatus({ kind: "idle", msg: "Set a = 0. Dot/projection becomes 0." });
+    setStatus({ kind: "idle", msg: t("status.zeroA") });
   }
 
   function zeroB() {
     const B: Vec3 = { x: 0, y: 0, z: 0 };
     stateRef.current.b = B;
     setB(B);
-    setStatus({ kind: "idle", msg: "Set b = 0. Projection/angle becomes undefined." });
+    setStatus({ kind: "idle", msg: t("status.zeroB") });
   }
 
   const Toggle = ({
@@ -410,24 +425,22 @@ export default function Module0VectorSimulatorP5Hybrid({
         >
           <div className="border-b border-white/10 bg-black/20 px-4 pt-4 pb-3">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-black tracking-tight">Module 0 Visual Simulator</div>
+              <div className="text-sm font-black tracking-tight">{t("title")}</div>
               <span className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-extrabold text-white/70">
-                {mode.toUpperCase()} • Vectors • Dot • Projection
+                {t("badges.meta", { mode: mode.toUpperCase() })}
               </span>
             </div>
 
             <p className="mt-1 text-xs leading-relaxed text-white/70">
               {mode === "2d" ? (
-                <>
-                  Drag vector tips. Projection shows <b>proj₍b₎(a)</b> and optional perpendicular.
-                </>
+                <>{t("desc.2d")}</>
               ) : (
                 <>
-                  Orbit the camera. Drag spheres. Hold{" "}
+                  {t("desc.3d.beforeZ")}{" "}
                   <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
                     Z
                   </span>{" "}
-                  while dragging (or enable Depth mode) to change depth.
+                  {t("desc.3d.afterZ")}
                 </>
               )}
             </p>
@@ -436,7 +449,7 @@ export default function Module0VectorSimulatorP5Hybrid({
           <div className="border-b border-white/10 p-3">
             <div className="grid grid-cols-[1fr_auto] items-center gap-2">
               <div className="text-xs font-extrabold text-white/70">
-                {mode === "2d" ? "Scale (px per unit)" : "Visual scale"}
+                {mode === "2d" ? t("labels.scale2d") : t("labels.scale3d")}
               </div>
               <div className="font-extrabold tabular-nums">{scale}</div>
             </div>
@@ -455,7 +468,7 @@ export default function Module0VectorSimulatorP5Hybrid({
             />
 
             <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">Snap to grid</div>
+              <div className="text-xs font-extrabold text-white/70">{t("labels.snapToGrid")}</div>
               <input
                 type="checkbox"
                 className="scale-110 accent-blue-500"
@@ -467,7 +480,7 @@ export default function Module0VectorSimulatorP5Hybrid({
             {mode === "3d" ? (
               <>
                 <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
-                  <div className="text-xs font-extrabold text-white/70">Depth mode (force Z-drag)</div>
+                  <div className="text-xs font-extrabold text-white/70">{t("labels.depthMode")}</div>
                   <input
                     type="checkbox"
                     className="scale-110 accent-blue-500"
@@ -476,16 +489,16 @@ export default function Module0VectorSimulatorP5Hybrid({
                   />
                 </div>
                 <div className="mt-2 text-xs text-white/60">
-                  Z key detected:{" "}
+                  {t("labels.zKeyDetected")}{" "}
                   <span className={zKeyUI ? "text-emerald-300 font-extrabold" : "text-white/70 font-extrabold"}>
-                    {zKeyUI ? "ON" : "off"}
+                    {zKeyUI ? t("labels.on") : t("labels.off")}
                   </span>
                 </div>
               </>
             ) : null}
 
             <div className="mt-2 grid grid-cols-[1fr_120px] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">Grid step (units)</div>
+              <div className="text-xs font-extrabold text-white/70">{t("labels.gridStep")}</div>
               <input
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold tabular-nums text-white/90 outline-none"
                 type="number"
@@ -501,67 +514,73 @@ export default function Module0VectorSimulatorP5Hybrid({
                 className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15 active:translate-y-[1px]"
                 onClick={randomizeVectors}
               >
-                Randomize a & b
+                {t("buttons.randomize")}
               </button>
               <button
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 active:translate-y-[1px]"
                 onClick={resetVectors}
               >
-                Reset
+                {t("buttons.reset")}
               </button>
               <button
                 className="rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-extrabold hover:bg-rose-300/15 active:translate-y-[1px]"
                 onClick={zeroA}
               >
-                Zero a
+                {t("buttons.zeroA")}
               </button>
               <button
                 className="rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-extrabold hover:bg-rose-300/15 active:translate-y-[1px]"
                 onClick={zeroB}
               >
-                Zero b
+                {t("buttons.zeroB")}
               </button>
             </div>
           </div>
 
           {/* overlays */}
           <div className="border-b border-white/10 p-3">
-            <div className="mb-2 text-sm font-black">Overlays</div>
+            <div className="mb-2 text-sm font-black">{t("sections.overlays")}</div>
             <div className="grid grid-cols-2 gap-2">
-              <Toggle label="Show grid + axes" checked={showGrid} onChange={setShowGridBoth} />
-              <Toggle label="Show components" checked={showComponents} onChange={setShowComponentsBoth} />
-              <Toggle label="Show angle θ" checked={showAngle} onChange={setShowAngleBoth} />
-              <Toggle label="Show projection" checked={showProjection} onChange={setShowProjectionBoth} />
-              <Toggle label="Show unit vector of b" checked={showUnitB} onChange={setShowUnitBBoth} />
-              <Toggle label="Show perpendicular part" checked={showPerp} onChange={setShowPerpBoth} />
+              <Toggle label={t("toggles.gridAxes")} checked={showGrid} onChange={setShowGridBoth} />
+              <Toggle label={t("toggles.components")} checked={showComponents} onChange={setShowComponentsBoth} />
+              <Toggle label={t("toggles.angle")} checked={showAngle} onChange={setShowAngleBoth} />
+              <Toggle label={t("toggles.projection")} checked={showProjection} onChange={setShowProjectionBoth} />
+              <Toggle label={t("toggles.unitB")} checked={showUnitB} onChange={setShowUnitBBoth} />
+              <Toggle label={t("toggles.perp")} checked={showPerp} onChange={setShowPerpBoth} />
             </div>
           </div>
 
           {/* live math */}
           <div className="border-b border-white/10 p-3">
-            <div className="mb-2 text-sm font-black">Live Math</div>
+            <div className="mb-2 text-sm font-black">{t("sections.liveMath")}</div>
 
             <div className="grid grid-cols-3 gap-2">
-              <KV label={`a = ${mode === "2d" ? "(ax, ay)" : "(ax, ay, az)"}`} value={aLabel} />
-              <KV label="|a|" value={fmt(derived.aMag)} />
-              <KV label="dot a·b" value={fmt(derived.dot)} />
-            </div>
-
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <KV label={`b = ${mode === "2d" ? "(bx, by)" : "(bx, by, bz)"}`} value={bLabel} />
-              <KV label="|b|" value={fmt(derived.bMag)} />
-              <KV label="cos(θ)" value={fmt(derived.cos)} />
-            </div>
-
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              <KV label="θ (deg)" value={fmt2(derived.angleDeg)} />
-              <KV label="shadow length on b" value={fmt(derived.scalarProj)} />
-              <KV label="proj_b(a) len" value={fmt(mag(derived.proj))} />
+              <KV
+                label={t("live.aLabel", { dims: mode === "2d" ? "(ax, ay)" : "(ax, ay, az)" })}
+                value={aLabel}
+              />
+              <KV label={t("live.magA")} value={fmt(derived.aMag)} />
+              <KV label={t("live.dot")} value={fmt(derived.dot)} />
             </div>
 
             <div className="mt-2 grid grid-cols-3 gap-2">
               <KV
-                label="proj_b(a)"
+                label={t("live.bLabel", { dims: mode === "2d" ? "(bx, by)" : "(bx, by, bz)" })}
+                value={bLabel}
+              />
+              <KV label={t("live.magB")} value={fmt(derived.bMag)} />
+              <KV label={t("live.cos")} value={fmt(derived.cos)} />
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <KV label={t("live.thetaDeg")} value={fmt2(derived.angleDeg)} />
+              <KV label={t("live.scalarProj")} value={fmt(derived.scalarProj)} />
+              <KV label={t("live.projLen")} value={fmt(mag(derived.proj))} />
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <KV
+                label={t("live.projVec")}
                 value={
                   mode === "2d"
                     ? `(${fmt(derived.proj.x)}, ${fmt(derived.proj.y)})`
@@ -569,46 +588,46 @@ export default function Module0VectorSimulatorP5Hybrid({
                 }
               />
               <KV
-                label="a⊥"
+                label={t("live.perpVec")}
                 value={
                   mode === "2d"
                     ? `(${fmt(derived.perp.x)}, ${fmt(derived.perp.y)})`
                     : `(${fmt(derived.perp.x)}, ${fmt(derived.perp.y)}, ${fmt(derived.perp.z)})`
                 }
               />
-              <KV label="|a⊥|" value={fmt(mag(derived.perp))} />
+              <KV label={t("live.perpLen")} value={fmt(mag(derived.perp))} />
             </div>
           </div>
 
           {/* practice mode */}
           <div className="p-3">
-            <div className="mb-2 text-sm font-black">Practice Mode</div>
+            <div className="mb-2 text-sm font-black">{t("sections.practice")}</div>
 
             <div className="grid grid-cols-[1fr_170px] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">Question type</div>
+              <div className="text-xs font-extrabold text-white/70">{t("practice.questionType")}</div>
               <select
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none"
                 value={qType}
                 onChange={(e) => setQType(e.target.value as QuestionType)}
               >
-                <option value="dot">Dot product a·b</option>
-                <option value="angle">Angle θ (degrees)</option>
-                <option value="scalarProj">Shadow length on b</option>
-                <option value="projX">proj_b(a) x-component</option>
-                <option value="projY">proj_b(a) y-component</option>
+                <option value="dot">{t("practice.options.dot")}</option>
+                <option value="angle">{t("practice.options.angle")}</option>
+                <option value="scalarProj">{t("practice.options.scalarProj")}</option>
+                <option value="projX">{t("practice.options.projX")}</option>
+                <option value="projY">{t("practice.options.projY")}</option>
                 <option value="projZ" disabled={mode === "2d"}>
-                  proj_b(a) z-component (3D)
+                  {t("practice.options.projZ")}
                 </option>
               </select>
             </div>
 
             <div className="mt-2 grid grid-cols-[1fr_170px] items-center gap-2">
-              <div className="text-xs font-extrabold text-white/70">Your answer</div>
+              <div className="text-xs font-extrabold text-white/70">{t("practice.yourAnswer")}</div>
               <input
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold tabular-nums text-white/90 outline-none"
                 value={answerText}
                 onChange={(e) => setAnswerText(e.target.value)}
-                placeholder="e.g. 3.5"
+                placeholder={t("practice.placeholder")}
               />
             </div>
 
@@ -617,26 +636,26 @@ export default function Module0VectorSimulatorP5Hybrid({
                 className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15 active:translate-y-[1px]"
                 onClick={onNewQuestion}
               >
-                New question
+                {t("buttons.newQuestion")}
               </button>
               <button
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 active:translate-y-[1px]"
                 onClick={onCheck}
               >
-                Check
+                {t("buttons.check")}
               </button>
               <button
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 active:translate-y-[1px]"
                 onClick={onReveal}
               >
-                Reveal
+                {t("buttons.reveal")}
               </button>
             </div>
 
             <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-relaxed ${statusClass}`}>
               {question ? (
                 <div className="mb-1">
-                  <span className="font-extrabold text-white/90">Active:</span>{" "}
+                  <span className="font-extrabold text-white/90">{t("practice.active")}</span>{" "}
                   <span className="text-white/80">{question.prompt}</span>
                 </div>
               ) : null}
@@ -647,30 +666,27 @@ export default function Module0VectorSimulatorP5Hybrid({
 
         {/* CANVAS */}
         <div className="relative z-0 min-h-[520px] lg:min-h-[calc(100vh-28px)]">
-         
-              {/* HUD */}
-          <div className="pointer-events-none absmolute inset-3 flex items-start justify-between gap-3">
+          {/* HUD */}
+          <div className="pointer-events-none inset-3 flex items-start justify-between gap-3">
             <div className="max-w-[560px] rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
-              <div className="text-sm font-black">Controls</div>
+              <div className="text-sm font-black">{t("hud.controlsTitle")}</div>
               <p className="mt-1 text-xs leading-relaxed text-white/70">
                 {mode === "2d" ? (
-                  <>
-                    Drag tips. Use projection to see how <b>a</b> decomposes into <b>proj₍b₎(a)</b> + <b>a⊥</b>.
-                  </>
+                  <>{t("hud.controls2d")}</>
                 ) : (
                   <>
-                    Orbit: drag empty space. Pick sphere to drag. Hold{" "}
+                    {t("hud.controls3d.beforeZ")}{" "}
                     <span className="rounded-md border border-white/10 bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
                       Z
                     </span>{" "}
-                    (or Depth mode) to move along z.
+                    {t("hud.controls3d.afterZ")}
                   </>
                 )}
               </p>
             </div>
 
             <div className="max-w-[420px] text-right rounded-2xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md">
-              <div className="text-sm font-black">Legend</div>
+              <div className="text-sm font-black">{t("hud.legendTitle")}</div>
               <p className="mt-1 text-xs leading-relaxed text-white/70">
                 <span className="font-extrabold" style={{ color: COLORS.a }}>
                   a
@@ -687,10 +703,11 @@ export default function Module0VectorSimulatorP5Hybrid({
                 <span className="font-extrabold" style={{ color: COLORS.perp }}>
                   a⊥
                 </span>
-                , <span className="font-extrabold text-white/80">shadow</span>
+                , <span className="font-extrabold text-white/80">{t("hud.shadow")}</span>
               </p>
             </div>
           </div>
+
           <div className="h-full w-full rounded-2xl border border-white/10 bg-white/[0.02] shadow-[0_18px_60px_rgba(0,0,0,0.35)] overflow-hidden">
             <VectorPad
               mode={mode}
@@ -703,14 +720,10 @@ export default function Module0VectorSimulatorP5Hybrid({
               className="relative h-full w-full min-h-[520px]"
             />
           </div>
-
-     
         </div>
       </div>
 
-      <div className="mt-3 text-xs text-white/50">
-        If 3D picking feels hard: zoom in with wheel, then click directly on the sphere tip.
-      </div>
+      <div className="mt-3 text-xs text-white/50">{t("footerTip")}</div>
     </div>
   );
 }

@@ -1,0 +1,213 @@
+{
+  "Header": {
+    "home": "Home",
+    "practice": "Practice",
+    "assignments": "Assignments",
+    "tagline": "Visual math • Practice • Progress",
+    "startSession": "Start session",
+    "signIn": "Sign in",
+    "profile": "Profile",
+    "logout": "Log out",
+    "menu": "Menu",
+    "close": "Close",
+    "tip": "Tip: Use Practice to track attempts, correct answers, and missed questions."
+  },
+   "UserMenu": {
+    "ariaLabel": "User menu",
+    "avatarAlt": "{name} avatar",
+    "profile": "Profile",
+    "progress": "Progress",
+    "logout": "Log out"
+  },
+   "Playground": {
+    "title": "Linear Algebra Playground",
+    "subtitle": "Pick a tool, then switch between 2D/3D.",
+    "viewMode": "View mode:",
+    "tabs": {
+      "spanBasis": "Span / Basis",
+      "module0": "Dot / Projection (Module 0)"
+    },
+    "mode": { "2d": "2D", "3d": "3D" }
+  },
+
+"SpanBasis": {
+    "title": "Basis • Subspace • Span ({mode})",
+    "subtitle": "Drag a and b, or type values. Then sculpt x = αa + βb.",
+    "buttons": {
+      "reset": "Reset",
+      "randomIndependent": "Random (independent)",
+      "makeDependent": "Make dependent",
+      "snap": "Snap α/β"
+    },
+    "toggles": {
+      "showSpan": "Show subspace (line/plane)",
+      "showCell": "Show cell (2D)",
+      "depthMode": "Depth mode (drag Z)"
+    },
+    "vectors": {
+      "title": "Set vectors",
+      "a": "a",
+      "b": "b",
+      "xyz": "x, y, z"
+    },
+    "mix": {
+      "title": "Mix coefficients",
+      "play": "Play",
+      "pause": "Pause",
+      "speed": "speed",
+      "alpha": "α",
+      "beta": "β"
+    },
+    "target": {
+      "title": "Target mode",
+      "subtitle": "Try to make x match t (watch the error).",
+      "on": "On",
+      "newTarget": "New target",
+      "setTargetEqualsX": "Set target = current x",
+      "error": "error ‖x − t‖ ="
+    },
+    "live": {
+      "title": "Live data",
+      "a": "a",
+      "b": "b",
+      "x": "x = αa + βb",
+      "independent": "Independent?",
+      "independentYes": "Yes (independent)",
+      "dependentNo": "No (dependent)",
+      "spanDim": "Span dimension",
+      "angle": "Angle(a,b)",
+      "det": "det(a,b)",
+      "area": "area={value}",
+      "crossMag": "‖a×b‖",
+      "normal": "normal n = a×b",
+      "tip": "Tip: if a and b become collinear, det (or a×b) → 0, and the span collapses to a line."
+    },
+    "overlay": {
+      "spanCollapses": "span collapses → a line (dimension 1)",
+      "cellLattice": "cell (parallelogram) = one “tile” of the lattice",
+      "combo": "x = αa + βb (α={alpha}, β={beta})",
+      "targetLabel": "target t",
+      "badgeDependent": "Span dim = 1 (line). det≈0 → not a basis for R².",
+      "badgeIndependent": "Span dim = 2. det={det} → {a,b} is a basis for R².",
+      "error": "error‖x−t‖={value}"
+    },
+    "overlay3d": {
+      "plane": "span{a,b} = a plane",
+      "combo": "x = αa + βb (α={alpha}, β={beta})",
+      "target": "target t (error={value})",
+      "badgeDependent": "Span dim = 1 (line) • basis = any nonzero direction vector",
+      "badgeIndependent": "Span dim = 2 (plane) • {a,b} is a basis for that plane"
+    }
+  }
+
+  ,
+
+
+  
+  "Module0": {
+        "title": "Module 0 Visual Simulator",
+    "badges": { "meta": "{mode} • Vectors • Dot • Projection" },
+    "sections": {
+      "overlays": "Overlays",
+      "liveMath": "Live Math",
+      "practice": "Practice Mode"
+    },
+    "buttons": {
+      "randomize": "Randomize a & b",
+      "reset": "Reset",
+      "zeroA": "Zero a",
+      "zeroB": "Zero b",
+      "newQuestion": "New question",
+      "check": "Check",
+      "reveal": "Reveal"
+    },
+    "status": {
+      "idle": "Click “New question”. Use overlays to reason visually, then answer.",
+      "question": "Question: {prompt}. Enter a number (tolerance ±{tolerance}{unit}).",
+      "noQuestion": "No active question. Click “New question” first.",
+      "invalidNumber": "Please enter a valid number (e.g., 3.5 or -2).",
+      "correct": "✅ Correct. {value} is within tolerance.",
+      "incorrect": "❌ Not quite. You said {value}. Try again using the overlays.",
+      "noReveal": "No question to reveal. Click “New question” first.",
+      "answer": "Answer: {value}{unit}",
+      "randomized": "Randomized vectors. Drag tips to explore.",
+      "reset": "Reset to default vectors.",
+      "zeroA": "Set a = 0. Dot/projection becomes 0.",
+      "zeroB": "Set b = 0. Projection/angle becomes undefined."
+    },
+    "desc": {
+      "2d": "Drag vector tips. Projection shows proj₍b₎(a) and optional perpendicular.",
+      "3d": {
+        "beforeZ": "Orbit the camera. Drag spheres. Hold",
+        "afterZ": "while dragging (or enable Depth mode) to change depth."
+      }
+    },
+    "labels": {
+      "scale2d": "Scale (px per unit)",
+      "scale3d": "Visual scale",
+      "snapToGrid": "Snap to grid",
+      "depthMode": "Depth mode (force Z-drag)",
+      "zKeyDetected": "Z key detected:",
+      "on": "ON",
+      "off": "off",
+      "gridStep": "Grid step (units)"
+    },
+    "toggles": {
+      "gridAxes": "Show grid + axes",
+      "components": "Show components",
+      "angle": "Show angle θ",
+      "projection": "Show projection",
+      "unitB": "Show unit vector of b",
+      "perp": "Show perpendicular part"
+    },
+    "questions": {
+      "dot": "Compute the dot product a · b",
+      "angle": "Compute the angle θ between a and b (degrees)",
+      "scalarProj": "Compute the scalar projection of a on b (shadow length on b)",
+      "projX": "Compute the x-component of proj_b(a)",
+      "projY": "Compute the y-component of proj_b(a)",
+      "projZ": "Compute the z-component of proj_b(a)"
+    },
+    "live": {
+      "aLabel": "a = {dims}",
+      "bLabel": "b = {dims}",
+      "magA": "|a|",
+      "magB": "|b|",
+      "dot": "dot a·b",
+      "cos": "cos(θ)",
+      "thetaDeg": "θ (deg)",
+      "scalarProj": "shadow length on b",
+      "projLen": "proj_b(a) len",
+      "projVec": "proj_b(a)",
+      "perpVec": "a⊥",
+      "perpLen": "|a⊥|"
+    },
+    "practice": {
+      "questionType": "Question type",
+      "yourAnswer": "Your answer",
+      "placeholder": "e.g. 3.5",
+      "active": "Active:",
+      "options": {
+        "dot": "Dot product a·b",
+        "angle": "Angle θ (degrees)",
+        "scalarProj": "Shadow length on b",
+        "projX": "proj_b(a) x-component",
+        "projY": "proj_b(a) y-component",
+        "projZ": "proj_b(a) z-component (3D)"
+      }
+    },
+    "hud": {
+      "controlsTitle": "Controls",
+      "legendTitle": "Legend",
+      "shadow": "shadow",
+      "controls2d": "Drag tips. Use projection to see how a decomposes into proj₍b₎(a) + a⊥.",
+      "controls3d": {
+        "beforeZ": "Orbit: drag empty space. Pick sphere to drag. Hold",
+        "afterZ": "(or Depth mode) to move along z."
+      }
+    },
+    "footerTip": "If 3D picking feels hard: zoom in with wheel, then click directly on the sphere tip."
+  }
+
+
+}

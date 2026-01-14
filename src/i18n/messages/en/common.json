@@ -1,0 +1,24 @@
+{
+  "Header": {
+        "language": "Language"
+,
+    "home": "Home",
+    "practice": "Practice",
+    "assignments": "Assignments",
+    "tagline": "Visual math • Practice • Progress",
+    "startSession": "Start session",
+    "signIn": "Sign in",
+    "profile": "Profile",
+    "logout": "Log out",
+    "menu": "Menu",
+    "close": "Close",
+    "tip": "Tip: Use Practice to track attempts, correct answers, and missed questions."
+  },
+  "UserMenu": {
+    "ariaLabel": "User menu",
+    "avatarAlt": "{name} avatar",
+    "profile": "Profile",
+    "progress": "Progress",
+    "logout": "Log out"
+  }
+}
