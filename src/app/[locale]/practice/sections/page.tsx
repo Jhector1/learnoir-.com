@@ -1,5 +1,6 @@
-import VectorsLandingPage from "@/components/practice/sections/VectorsLandingPage";
+import PracticeLandingPage from "@/components/practice/sections/VectorsLandingPage";
+// import VectorsLandingPage from "@/components/practice/sections/VectorsLandingPage";
 
 export default function SectionPage() {
-  return <div><VectorsLandingPage /></div>;
+  return <PracticeLandingPage />;
 }

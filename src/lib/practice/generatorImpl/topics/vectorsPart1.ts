@@ -1,5 +1,11 @@
 // src/lib/practice/generator/topics/vectorsPart1.ts
-import type { Difficulty, Exercise } from "../../types";
+import type {
+  Difficulty,
+  Exercise,
+  ExerciseKind,
+  NumericExercise,
+  SingleChoiceExercise,
+} from "../../types";
 import type { GenOut } from "../expected";
 import type { RNG } from "../rng";
 
@@ -14,8 +20,7 @@ function fmtVec2(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
 function fmtVecN(v: number[]) {
-  // default to column in math convention
-  return fmtCol(v);
+  return fmtCol(v); // math convention
 }
 function fmtShape(r: number, c?: number) {
   return c === undefined ? `(${r},)` : `(${r}, ${c})`;
@@ -57,12 +62,11 @@ function vecInts(rng: RNG, n: number, range: number, allowZero = true) {
   return v;
 }
 
-
 export function genVectorsPart1(
   rng: RNG,
   diff: Difficulty,
   id: string
-): GenOut<Exercise> {
+): GenOut<ExerciseKind> {
   const range = diff === "easy" ? 5 : diff === "medium" ? 8 : 12;
 
   const archetype = rng.weighted([
@@ -81,8 +85,7 @@ export function genVectorsPart1(
     { value: "orth_proj_beta" as const, w: diff === "hard" ? 4 : 2 },
   ]);
 
-  // IMPORTANT: use a valid PracticeTopic enum value in Prisma
-  const TOPIC: any = "vectors";
+  const TOPIC = "vectors" as const;
 
   // ------------------------------------------------------------
   // 1) Dimensionality + orientation (math)
@@ -93,8 +96,8 @@ export function genVectorsPart1(
     const isRow = coinFlip(rng);
 
     const display = isRow ? fmtRow(v) : fmtCol(v);
-    const correctDim = `${n}D`;
     const correctOri = isRow ? "row" : "col";
+    const key = `${n}D_${correctOri}` as const;
 
     const prompt = String.raw`
 Consider the vector
@@ -107,7 +110,7 @@ $$
 2) Is $$v$$ written as a **row** vector or a **column** vector?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -125,9 +128,12 @@ $$
         { id: "H", text: "5D, column" },
       ],
       hint: "Math dimensionality = number of elements. Orientation = row vs column layout.",
-    } as any;
+    };
 
-    const idMap: Record<string, string> = {
+    const idMap: Record<
+      "2D_row" | "2D_col" | "3D_row" | "3D_col" | "4D_row" | "4D_col" | "5D_row" | "5D_col",
+      string
+    > = {
       "2D_row": "A",
       "2D_col": "B",
       "3D_row": "C",
@@ -138,7 +144,7 @@ $$
       "5D_col": "H",
     };
 
-    const optionId = idMap[`${correctDim}_${correctOri}`];
+    const optionId = idMap[key as keyof typeof idMap];
     return { archetype, exercise, expected: { kind: "single_choice", optionId } };
   }
 
@@ -159,7 +165,7 @@ $$
 Which statement is correct?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -170,10 +176,10 @@ Which statement is correct?
         { id: "A", text: String.raw`$$v\in\mathbb{R}^{${n}}$$` },
         { id: "B", text: String.raw`$$v\in\mathbb{R}^{${n - 1}}$$` },
         { id: "C", text: String.raw`$$v\in\mathbb{R}^{${n + 1}}$$` },
-        { id: "D", text: String.raw`Cannot be determined` },
+        { id: "D", text: "Cannot be determined" },
       ],
       hint: "If a vector has n elements, it lives in ℝⁿ.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "A" } };
   }
@@ -184,24 +190,22 @@ Which statement is correct?
   if (archetype === "numpy_shapes") {
     const n = 3;
 
+    // ✅ keep Python in fenced code, never inside $$ ... $$
+    // ✅ refer to variable names with inline code `...`
     const prompt = String.raw`
 In Python/NumPy, consider:
 
-\`\`\`python
+~~~python
 asList  = [1,2,3]
 asArray = np.array([1,2,3])
 rowVec  = np.array([[1,2,3]])
 colVec  = np.array([[1],[2],[3]])
-\`\`\`
+~~~
 
-Which set of shapes is correct?
-
-$$
-\text{asList},\ \text{asArray},\ \text{rowVec},\ \text{colVec}
-$$
+Which set of shapes is correct for \`asList\`, \`asArray\`, \`rowVec\`, \`colVec\`?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -215,7 +219,7 @@ $$
         { id: "D", text: `${fmtShape(n)} , ${fmtShape(1, n)} , ${fmtShape(n, 1)} , ${fmtShape(n)}` },
       ],
       hint: "1D arrays have shape (n,). Row vector is (1,n). Column vector is (n,1).",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "A" } };
   }
@@ -244,7 +248,7 @@ $$
 Is the sum $$a+b$$ **defined** in linear algebra?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -256,7 +260,7 @@ Is the sum $$a+b$$ **defined** in linear algebra?
         { id: "no", text: "No" },
       ],
       hint: "Vector addition requires the same number of elements (same ℝⁿ).",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: same ? "yes" : "no" } };
   }
@@ -271,16 +275,16 @@ Is the sum $$a+b$$ **defined** in linear algebra?
     const prompt = String.raw`
 In NumPy:
 
-\`\`\`python
-v = np.array([[1,2,3]])      # shape (1,3)
+~~~python
+v = np.array([[1,2,3]])     # shape (1,3)
 w = np.array([[10,20]]).T   # shape (2,1)
 v + w
-\`\`\`
+~~~
 
 What is the **shape** of the result?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -294,7 +298,7 @@ What is the **shape** of the result?
         { id: "D", text: fmtShape(n, m) }, // (3,2)
       ],
       hint: "Broadcasting expands (2,1) across columns and (1,3) across rows → (2,3).",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "C" } };
   }
@@ -304,23 +308,23 @@ What is the **shape** of the result?
   // ------------------------------------------------------------
   if (archetype === "scalar_mult_list_vs_array") {
     const s = rng.pick([2, 3, 4] as const);
-    const a = [3, 4, 5];
 
     const prompt = String.raw`
 In Python:
 
-\`\`\`python
+~~~python
 s = ${s}
 a = [3,4,5]            # list
 b = np.array([3,4,5])  # NumPy array
+
 a*s
 b*s
-\`\`\`
+~~~
 
 Which statement is correct?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -334,7 +338,7 @@ Which statement is correct?
         { id: "D", text: "Both repeat their contents." },
       ],
       hint: "In Python, list * integer repeats the list.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "B" } };
   }
@@ -366,7 +370,7 @@ $$
 Round to ${decimals} decimal place(s).
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -378,9 +382,7 @@ $$
 \lVert v\rVert=\sqrt{v_x^2+v_y^2}
 $$
 `.trim(),
-      correctValue: value,
-      tolerance: tol,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
   }
@@ -415,7 +417,7 @@ What is ${askX ? "the x-component" : "the y-component"} of $$\hat v$$?
 Round to ${decimals} decimal place(s).
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -427,9 +429,7 @@ $$
 \hat v=\frac{v}{\lVert v\rVert}
 $$
 `.trim(),
-      correctValue: value,
-      tolerance: tol,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
   }
@@ -459,7 +459,7 @@ a\cdot b.
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -471,9 +471,7 @@ $$
 a\cdot b=\sum_{i=1}^{n} a_i b_i
 $$
 `.trim(),
-      correctValue: val,
-      tolerance: 0,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value: val, tolerance: 0 } };
   }
@@ -482,7 +480,6 @@ $$
   // 10) Dot sign ↔ angle type
   // ------------------------------------------------------------
   if (archetype === "dot_sign_angle") {
-    // craft sign by constructing b = k a for positive/negative, or perpendicular for zero (2D)
     const a = [randNonZeroInt(rng, -range, range), randNonZeroInt(rng, -range, range)];
     const kind = rng.pick(["positive", "negative", "zero"] as const);
 
@@ -494,8 +491,7 @@ $$
       const k = rng.pick([-1, -2, -3] as const);
       b = [k * a[0], k * a[1]];
     } else {
-      // perpendicular: (x,y) -> (-y,x)
-      b = [-a[1], a[0]];
+      b = [-a[1], a[0]]; // perpendicular
     }
 
     const prompt = String.raw`
@@ -513,7 +509,7 @@ Classify the angle $$\theta$$ between $$a$$ and $$b$$ as **acute**, **right**, o
     const correct =
       kind === "zero" ? "right" : kind === "positive" ? "acute" : "obtuse";
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -526,7 +522,7 @@ Classify the angle $$\theta$$ between $$a$$ and $$b$$ as **acute**, **right**, o
         { id: "obtuse", text: "Obtuse" },
       ],
       hint: "If a·b > 0 → acute; a·b = 0 → right; a·b < 0 → obtuse.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: correct } };
   }
@@ -538,16 +534,16 @@ Classify the angle $$\theta$$ between $$a$$ and $$b$$ as **acute**, **right**, o
     const prompt = String.raw`
 Hadamard (element-wise) multiplication requires equal-length vectors.
 
-\`\`\`python
+~~~python
 a = np.array([5,4,8,2])
 b = np.array([1,0,0.5])
 a*b
-\`\`\`
+~~~
 
 Why does this error?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -561,7 +557,7 @@ Why does this error?
         { id: "D", text: "Because a*b computes a dot product, not Hadamard." },
       ],
       hint: "Element-wise operations pair up entries. If lengths differ, entries can’t pair up.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "B" } };
   }
@@ -575,7 +571,6 @@ Why does this error?
 
     const v = vecInts(rng, m, range, false); // column
     const w = vecInts(rng, n, range, false); // row
-    // outer = v w^T has entries v_i * w_j
     const i = rng.int(1, m); // 1-indexed for prompt
     const j = rng.int(1, n);
     const val = v[i - 1] * w[j - 1];
@@ -598,7 +593,7 @@ $$
 Compute the entry $$(vw^T)_{${i}${j}}$$.
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -610,29 +605,25 @@ $$
 (vw^T)_{ij}=v_i w_j
 $$
 `.trim(),
-      correctValue: val,
-      tolerance: 0,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value: val, tolerance: 0 } };
   }
 
   // ------------------------------------------------------------
-  // 13) Orthogonal projection scalar β (harder)
+  // 13) Orthogonal projection scalar β
   // β = (a·b)/(a·a)
   // ------------------------------------------------------------
-  {
-    // keep 2D for intuition + clean numbers
+  if (archetype === "orth_proj_beta") {
     const a = [randNonZeroInt(rng, -6, 6), randNonZeroInt(rng, -6, 6)];
-    // pick integer beta, then construct b = beta*a + p where p ⟂ a, so beta comes out clean
-    const beta = randNonZeroInt(rng, -3, 3);
+    const betaExact = randNonZeroInt(rng, -3, 3);
     const p = [-a[1], a[0]]; // perpendicular
     const t = rng.int(-2, 2);
 
-    const b = [beta * a[0] + t * p[0], beta * a[1] + t * p[1]];
+    const b = [betaExact * a[0] + t * p[0], betaExact * a[1] + t * p[1]];
 
     const decimals = 2;
-    const value = roundTo(beta, decimals);
+    const value = roundTo(betaExact, decimals);
     const tol = 0.01;
 
     const prompt = String.raw`
@@ -653,7 +644,7 @@ $$
 Round to ${decimals} decimal place(s).
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -665,10 +656,20 @@ $$
 \beta=\frac{a\cdot b}{a\cdot a}
 $$
 `.trim(),
-      correctValue: value,
-      tolerance: tol,
-    } as any;
+    };
 
-    return { archetype: "orth_proj_beta", exercise, expected: { kind: "numeric", value, tolerance: tol } };
+    return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
   }
+
+  // Should never hit (weighted list covers all), but keep TS happy
+  const fallback: SingleChoiceExercise = {
+    id,
+    topic: TOPIC,
+    difficulty: diff,
+    kind: "single_choice",
+    title: "Vectors (fallback)",
+    prompt: "Fallback exercise.",
+    options: [{ id: "ok", text: "OK" }],
+  };
+  return { archetype: "fallback", exercise: fallback, expected: { kind: "single_choice", optionId: "ok" } };
 }

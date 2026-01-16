@@ -1,9 +1,9 @@
 // src/lib/practice/generator/topics/matrixProperties.ts
-import type { Difficulty, Exercise } from "../../types";
+import type { Difficulty, Exercise, ExerciseKind, MultiChoiceExercise, SingleChoiceExercise } from "../../types";
 import type { GenOut } from "../expected";
 import { RNG } from "../rng";
 
-export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "always_true_multi" as const, w: 4 },
     { value: "identity_zero_trap" as const, w: 3 },
@@ -11,7 +11,7 @@ export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): Gen
   ]);
 
   if (archetype === "identity_zero_trap") {
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "matrix_properties",
       difficulty: diff,
@@ -24,13 +24,13 @@ export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): Gen
         { id: "C", text: "AB = BA for all A,B" },
         { id: "D", text: "(A + B)² = A² + B² always" },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "A" } };
   }
 
   if (archetype === "noncomm_true") {
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "matrix_properties",
       difficulty: diff,
@@ -43,12 +43,12 @@ export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): Gen
         { id: "distfalse", text: "A(B + C) ≠ AB + AC in general." },
         { id: "invalways", text: "Every square matrix has a matrix inverse." },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "noncomm" } };
   }
 
-  const exercise: Exercise = {
+  const exercise: MultiChoiceExercise = {
     id,
     topic: "matrix_properties",
     difficulty: diff,
@@ -61,7 +61,11 @@ export function genMatrixProperties(rng: RNG, diff: Difficulty, id: string): Gen
       { id: "comm", text: "AB = BA for all A,B" },
       { id: "ident", text: "There exists I such that AI = IA = A" },
     ],
-  } as any;
+  };
 
-  return { archetype, exercise, expected: { kind: "multi_choice", optionIds: ["assoc", "dist", "ident"] } };
+  return {
+    archetype,
+    exercise,
+    expected: { kind: "multi_choice", optionIds: ["assoc", "dist", "ident"] },
+  };
 }

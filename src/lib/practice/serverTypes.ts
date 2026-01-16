@@ -5,21 +5,21 @@ export type Vec3 = { x: number; y: number; z: number };
 
 export type ExercisePublic =
   | {
-      topic: PracticeTopic;
+      topic: string;
       kind: "single_choice";
       title: string;
       prompt: string;
       options: { id: string; text: string }[];
     }
   | {
-      topic: PracticeTopic;
+      topic: string;
       kind: "multi_choice";
       title: string;
       prompt: string;
       options: { id: string; text: string }[];
     }
   | {
-      topic: PracticeTopic;
+      topic: string;
       kind: "numeric";
       title: string;
       prompt: string;
@@ -28,7 +28,7 @@ export type ExercisePublic =
       unit?: string;
     }
   | {
-      topic: PracticeTopic;
+      topic: string;
       kind: "vector_drag_target";
       title: string;
       prompt: string;
@@ -39,7 +39,7 @@ export type ExercisePublic =
       tolerance: number;
     }
   | {
-      topic: PracticeTopic;
+      topic: string;
       kind: "vector_drag_dot";
       title: string;
       prompt: string;

@@ -1,18 +1,21 @@
-import type { Difficulty, Exercise } from "../../types";
+// src/lib/practice/generator/topics/angle.ts
+import type {
+  Difficulty,
+  Exercise,
+  ExerciseKind,
+  NumericExercise,
+  SingleChoiceExercise,
+} from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, dot, mag2D, roundTo } from "../utils";
 import { RNG } from "../rng";
 
-// ---------- LaTeX helpers (matrixOps style) ----------
+// ---------- LaTeX helpers ----------
 function fmtVec2Latex(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
 
-export function genAngle(
-  rng: RNG,
-  diff: Difficulty,
-  id: string
-): GenOut<Exercise> {
+export function genAngle(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "angle_numeric" as const, w: 6 },
     { value: "angle_classify" as const, w: diff === "easy" ? 6 : 3 },
@@ -45,7 +48,7 @@ $$
 Classify the angle $$\theta$$ between $$a$$ and $$b$$.
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "angle",
       difficulty: diff,
@@ -58,7 +61,7 @@ Classify the angle $$\theta$$ between $$a$$ and $$b$$.
         { id: "obtuse", text: String.raw`Obtuse ($$90^\circ < \theta < 180^\circ$$)` },
         { id: "cannot", text: "Cannot be determined without magnitudes" },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: correct } };
   }
@@ -88,7 +91,7 @@ $$
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: "angle",
       difficulty: diff,
@@ -96,9 +99,7 @@ $$
       title: "Cosine of angle",
       prompt,
       hint,
-      correctValue: value,
-      tolerance: tol,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
   }
@@ -130,7 +131,7 @@ $$
 `.trim()
       : undefined;
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "angle",
     difficulty: diff,
@@ -138,9 +139,7 @@ $$
     title: "Angle between vectors",
     prompt,
     hint,
-    correctValue: value,
-    tolerance: tol,
-  } as any;
+  };
 
   return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
 }

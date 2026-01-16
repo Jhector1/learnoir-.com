@@ -1,30 +1,49 @@
+// src/lib/practice/types.ts
 export type Difficulty = "easy" | "medium" | "hard";
-export type Topic =
-  // Module 0
+
+/**
+ * DB-facing slug (unlimited).
+ * Canonical topic id for UI + URL + DB.
+ */
+export type TopicSlug = string;
+
+/**
+ * @deprecated Use TopicSlug. Kept for backward compatibility.
+ */
+export type Topic = TopicSlug;
+
+/**
+ * Generator engine keys (ONLY engines you implement).
+ */
+export type GenKey =
   | "dot"
   | "projection"
   | "angle"
   | "vectors"
-  // Module 1
+  | "vectors_part1"
+  | "vectors_part2"
   | "linear_systems"
   | "augmented"
   | "rref"
   | "solution_types"
   | "parametric"
-  | "vectors_part2"
-  | "vectors_part1"
-
-  // Module 2
   | "matrix_ops"
   | "matrix_inverse"
-  | "matrix_properties";
+  | "matrix_properties"
+  | "matrices_part1";
 
+export type ExerciseKind =
+  | "single_choice"
+  | "multi_choice"
+  | "numeric"
+  | "vector_drag_target"
+  | "vector_drag_dot";
 
-export type Vec3 = { x: number; y: number; z: number };
+export type Vec3 = { x: number; y: number; z?: number };
 
 export type ExerciseBase = {
   id: string;
-  topic: Topic;
+  topic: TopicSlug; // ✅ DB slug always
   difficulty: Difficulty;
   title: string;
   prompt: string;
@@ -33,22 +52,23 @@ export type ExerciseBase = {
 export type SingleChoiceExercise = ExerciseBase & {
   kind: "single_choice";
   options: { id: string; text: string }[];
-  correctOptionId: string;
-    tolerance: number;
+  hint?: string;
 };
 
 export type MultiChoiceExercise = ExerciseBase & {
   kind: "multi_choice";
   options: { id: string; text: string }[];
-  correctOptionIds: string[];
-    tolerance: number;
 };
 
 export type NumericExercise = ExerciseBase & {
   kind: "numeric";
   hint?: string;
-  correctValue: number;
-  tolerance: number;
+  tolerance?: number;
+  /**
+   * Optional; don’t include in production payloads if you don’t want to leak answers.
+   * Validation should rely on signed expected.
+   */
+  correctValue?: number;
 };
 
 export type VectorDragTargetExercise = ExerciseBase & {

@@ -38,8 +38,8 @@ a_{m,1} & a_{m,2} & \cdots & a_{m,n}
 \in \mathbb{R}^{m\times n}
 $$
 
-- **Shape** is written \((\text{rows},\ \text{cols})\).
-- We write matrices in **bold capital letters**: \(\mathbf{A},\mathbf{M}\).
+- **Shape** is written $(\text{rows},\ \text{cols})$.
+- We write matrices in **bold capital letters**: $\mathbf{A},\mathbf{M}$.
 `.trim(),
         },
         {
@@ -73,14 +73,14 @@ In data science, matrices are often called **data tables**:
             {
               kind: "mcq",
               id: "m1_q1a",
-              prompt: String.raw`If \(\mathbf{A}\in\mathbb{R}^{3\times 5}\), how many rows and columns does \(\mathbf{A}\) have?`,
+              prompt: String.raw`If $\mathbf{A}\in\mathbb{R}^{3\times 5}$, how many rows and columns does $\mathbf{A}$ have?`,
               choices: [
                 { id: "a", label: "3 rows, 5 columns" },
                 { id: "b", label: "5 rows, 3 columns" },
                 { id: "c", label: "8 total rows/cols" },
               ],
               answerId: "a",
-              explain: String.raw`The notation \(3\times5\) means rows × columns.`,
+              explain: String.raw`The notation $3\times5$ means rows × columns.`,
             },
           ],
         },
@@ -102,10 +102,10 @@ In data science, matrices are often called **data tables**:
           id: "m2_t1",
           title: "Indexing: math vs Python",
           markdown: String.raw`
-In math, \(a_{3,4}\) means: **3rd row, 4th column**.
+In math, $a_{3,4}$ means: **3rd row, 4th column**.
 
 In NumPy (0-based):
-- \(a_{3,4}\) is **A[2, 3]**
+- $a_{3,4}$ is **A[2, 3]**
 
 > Math: 1,2,3,...  
 > Python: 0,1,2,...
@@ -125,8 +125,8 @@ A = np.arange(60).reshape(6,10)
 sub = A[1:4, 0:5]   # rows 1..3, cols 0..4
 ~~~
 
-- \(\texttt{1:4}\) means: start at 1, stop before 4.
-- \(\texttt{0:5}\) means: start at 0, stop before 5.
+- $\texttt{1:4}$ means: start at 1, stop before 4.
+- $\texttt{0:5}$ means: start at 0, stop before 5.
 `.trim(),
         },
         {
@@ -144,7 +144,7 @@ sub = A[1:4, 0:5]   # rows 1..3, cols 0..4
             {
               kind: "mcq",
               id: "m2_q1a",
-              prompt: String.raw`In NumPy, which index selects the element \(a_{3,4}\) (3rd row, 4th col) from matrix A?`,
+              prompt: String.raw`In NumPy, which index selects the element $a_{3,4}$ (3rd row, 4th col) from matrix A?`,
               choices: [
                 { id: "a", label: "A[3,4]" },
                 { id: "b", label: "A[2,3]" },
@@ -173,7 +173,7 @@ sub = A[1:4, 0:5]   # rows 1..3, cols 0..4
           id: "m3_t1",
           title: "Common special matrices",
           markdown: String.raw`
-### Identity \(I\)
+### Identity $I$
 Diagonal of 1s, else 0s. Acts like “1” for matrices.
 
 ### Diagonal
@@ -208,7 +208,7 @@ U = np.triu(A)             # upper triangular (keep above diagonal)
 L = np.tril(A)             # lower triangular (keep below diagonal)
 ~~~
 
-**Tip:** always check \(\texttt{A.shape}\) while learning.
+**Tip:** always check $\texttt{A.shape}$ while learning.
 `.trim(),
         },
         {
@@ -262,7 +262,7 @@ $$
 $$
 
 ### Scalar-matrix multiplication
-Multiply every entry by a scalar \(\gamma\):
+Multiply every entry by a scalar $\gamma$:
 $$
 (\gamma\mathbf{A})_{i,j}=\gamma a_{i,j}
 $$
@@ -289,8 +289,8 @@ A * B      # Hadamard (element-wise)
 # A @ B    # matrix multiplication (INVALID here because shapes don't match)
 ~~~
 
-- \(\texttt{*}\) = element-wise (Hadamard)  
-- \(\texttt{@}\) = standard matrix multiplication  
+- $\texttt{*}$ = element-wise (Hadamard)  
+- $\texttt{@}$ = standard matrix multiplication  
 `.trim(),
         },
         {
@@ -334,14 +334,14 @@ A + lam*np.eye(len(A)) # shifting (adds only to diagonal)
             {
               kind: "mcq",
               id: "m4_q1a",
-              prompt: String.raw`Which operation changes only the diagonal entries of \(\mathbf{A}\)?`,
+              prompt: String.raw`Which operation changes only the diagonal entries of $\mathbf{A}$?`,
               choices: [
-                { id: "a", label: String.raw`\(\mathbf{A} + \lambda\)` },
-                { id: "b", label: String.raw`\(\mathbf{A} + \lambda\mathbf{I}\)` },
-                { id: "c", label: String.raw`\(\lambda\mathbf{A}\)` },
+                { id: "a", label: String.raw`$\mathbf{A} + \lambda$` },
+                { id: "b", label: String.raw`$\mathbf{A} + \lambda\mathbf{I}$` },
+                { id: "c", label: String.raw`$\lambda\mathbf{A}$` },
               ],
               answerId: "b",
-              explain: String.raw`Shifting is \(\mathbf{A}+\lambda\mathbf{I}\), which modifies only the diagonal.`,
+              explain: String.raw`Shifting is $\mathbf{A}+\lambda\mathbf{I}$, which modifies only the diagonal.`,
             },
           ],
         },
@@ -363,7 +363,7 @@ A + lam*np.eye(len(A)) # shifting (adds only to diagonal)
           id: "m5_t1",
           title: "Validity rule: inner dimensions must match",
           markdown: String.raw`
-If \(\mathbf{A}\) is \(m\times n\) and \(\mathbf{B}\) is \(n\times k\), then:
+If $\mathbf{A}$ is $m\times n$ and $\mathbf{B}$ is $n\times k$, then:
 
 $$
 (m\times n)(n\times k) = (m\times k)
@@ -378,7 +378,7 @@ $$
           id: "m5_t2",
           title: "How the numbers are computed",
           markdown: String.raw`
-Each entry \((i,j)\) in \(\mathbf{C}=\mathbf{A}\mathbf{B}\) is:
+Each entry $(i,j)$ in $\mathbf{C}=\mathbf{A}\mathbf{B}$ is:
 
 $$
 c_{i,j} = \text{(row i of A)} \cdot \text{(col j of B)}
@@ -402,14 +402,14 @@ So matrix multiplication is a **systematic collection of dot products**.
             {
               kind: "mcq",
               id: "m5_q1a",
-              prompt: String.raw`If \(\mathbf{A}\) is \(2\times 3\) and \(\mathbf{B}\) is \(3\times 4\), what is the shape of \(\mathbf{A}\mathbf{B}\)?`,
+              prompt: String.raw`If $\mathbf{A}$ is $2\times 3$ and $\mathbf{B}$ is $3\times 4$, what is the shape of $\mathbf{A}\mathbf{B}$?`,
               choices: [
                 { id: "a", label: "2×4" },
                 { id: "b", label: "3×3" },
                 { id: "c", label: "4×2" },
               ],
               answerId: "a",
-              explain: String.raw`Inner 3 matches 3, result takes outer dimensions 2 and 4 → 2×4.`,
+              explain: String.raw`Inner 3 matches 3, result takes outer dimensions 2 and 4 → $2\times4$.`,
             },
           ],
         },
@@ -431,7 +431,7 @@ So matrix multiplication is a **systematic collection of dot products**.
           id: "m6_t1",
           title: "Weighted combinations (columns-as-vectors)",
           markdown: String.raw`
-Put vectors as columns of \(\mathbf{A}\) and weights in \(\mathbf{w}\):
+Put vectors as columns of $\mathbf{A}$ and weights in $\mathbf{w}$:
 
 $$
 \mathbf{A}\mathbf{w} =
@@ -448,7 +448,7 @@ Interpretation:
           id: "m6_t2",
           title: "Geometric transform (2×2 acting on a 2D vector)",
           markdown: String.raw`
-A \(2\times2\) matrix can rotate/stretch/shear a 2D vector:
+A $2\times2$ matrix can rotate/stretch/shear a 2D vector:
 
 $$
 \mathbf{M}\mathbf{x}
@@ -472,14 +472,14 @@ Sometimes, a vector keeps its direction and only scales — that’s the “eige
             {
               kind: "mcq",
               id: "m6_q1a",
-              prompt: String.raw`Which interpretation matches \(\mathbf{A}\mathbf{w}\) when columns of \(\mathbf{A}\) are vectors?`,
+              prompt: String.raw`Which interpretation matches $\mathbf{A}\mathbf{w}$ when columns of $\mathbf{A}$ are vectors?`,
               choices: [
                 { id: "a", label: "Dot products of rows and rows" },
                 { id: "b", label: "Weighted sum of columns" },
                 { id: "c", label: "Element-wise multiplication" },
               ],
               answerId: "b",
-              explain: String.raw`\(\mathbf{A}\mathbf{w}\) forms a linear combination of the columns of \(\mathbf{A}\).`,
+              explain: String.raw`$\mathbf{A}\mathbf{w}$ forms a linear combination of the columns of $\mathbf{A}$.`,
             },
           ],
         },
@@ -524,10 +524,11 @@ $$
 (\mathbf{A}\mathbf{B}\mathbf{C})^T = \mathbf{C}^T\mathbf{B}^T\mathbf{A}^T
 $$
 
-Mnemonic: **LIVE EVIL**  
-\[
+Mnemonic: **LIVE EVIL**
+
+$$
 (LIVE)^T = E^T V^T I^T L^T
-\]
+$$
 `.trim(),
         },
         {
@@ -547,12 +548,12 @@ Mnemonic: **LIVE EVIL**
               id: "m7_q1a",
               prompt: String.raw`Which is correct?`,
               choices: [
-                { id: "a", label: String.raw`\((AB)^T = A^T B^T\)` },
-                { id: "b", label: String.raw`\((AB)^T = B^T A^T\)` },
-                { id: "c", label: String.raw`\((AB)^T = (AB)\)` },
+                { id: "a", label: String.raw`$(AB)^T = A^T B^T$` },
+                { id: "b", label: String.raw`$(AB)^T = B^T A^T$` },
+                { id: "c", label: String.raw`$(AB)^T = (AB)$` },
               ],
               answerId: "b",
-              explain: String.raw`Transpose of a product reverses order: \((AB)^T=B^T A^T\).`,
+              explain: String.raw`Transpose of a product reverses order: $(AB)^T=B^T A^T$.`,
             },
           ],
         },
@@ -581,8 +582,8 @@ $$
 $$
 
 That implies:
-- \(\mathbf{A}\) must be **square**
-- entry-wise: \(a_{i,j} = a_{j,i}\)
+- $\mathbf{A}$ must be **square**
+- entry-wise: $a_{i,j} = a_{j,i}$
 `.trim(),
         },
         {
@@ -590,10 +591,10 @@ That implies:
           id: "m8_t2",
           title: "Make symmetry from any matrix",
           markdown: String.raw`
-If \(\mathbf{A}\) is \(m\times n\), then:
+If $\mathbf{A}$ is $m\times n$, then:
 
-- \(\mathbf{A}^T\mathbf{A}\) is \(n\times n\) and symmetric
-- \(\mathbf{A}\mathbf{A}^T\) is \(m\times m\) and symmetric
+- $\mathbf{A}^T\mathbf{A}$ is $n\times n$ and symmetric
+- $\mathbf{A}\mathbf{A}^T$ is $m\times m$ and symmetric
 
 Proof idea uses LIVE EVIL:
 $$
@@ -616,14 +617,14 @@ $$
             {
               kind: "mcq",
               id: "m8_q1a",
-              prompt: String.raw`If \(\mathbf{A}\) is \(4\times 2\), what is the shape of \(\mathbf{A}^T\mathbf{A}\)?`,
+              prompt: String.raw`If $\mathbf{A}$ is $4\times 2$, what is the shape of $\mathbf{A}^T\mathbf{A}$?`,
               choices: [
                 { id: "a", label: "4×4" },
                 { id: "b", label: "2×2" },
                 { id: "c", label: "4×2" },
               ],
               answerId: "b",
-              explain: String.raw`\(\mathbf{A}^T\) is \(2\times4\), so \((2×4)(4×2)=(2×2)\).`,
+              explain: String.raw`$\mathbf{A}^T$ is $2\times4$, so $(2\times4)(4\times2)=(2\times2)$.`,
             },
           ],
         },

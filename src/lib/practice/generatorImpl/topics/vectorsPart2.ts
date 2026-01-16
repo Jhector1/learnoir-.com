@@ -1,5 +1,11 @@
 // src/lib/practice/generator/topics/vectorsPart2.ts
-import type { Difficulty, Exercise } from "../../types";
+import type {
+  Difficulty,
+  Exercise,
+  ExerciseKind,
+  NumericExercise,
+  SingleChoiceExercise,
+} from "../../types";
 import type { GenOut } from "../expected";
 import type { RNG } from "../rng";
 
@@ -7,36 +13,26 @@ import type { RNG } from "../rng";
 function fmtVec2(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
-
 function fmtSetVec2(vs: Array<{ x: number; y: number }>) {
-  // \left\{ v1, v2, ... \right\}
   return String.raw`\left\{${vs.map((v) => fmtVec2(v.x, v.y)).join(", ")}\right\}`;
 }
-
 function fmtSpan2(vs: Array<{ x: number; y: number }>) {
-  // span{ v1, v2 }
-  return String.raw`\operatorname{span}\!\left\{${vs
-    .map((v) => fmtVec2(v.x, v.y))
-    .join(", ")}\right\}`;
+  return String.raw`\operatorname{span}\!\left\{${vs.map((v) => fmtVec2(v.x, v.y)).join(", ")}\right\}`;
 }
 
 // ---------------- math helpers ----------------
 function det2(a: { x: number; y: number }, b: { x: number; y: number }) {
   return a.x * b.y - a.y * b.x;
 }
-
 function randNonZeroInt(rng: RNG, lo: number, hi: number) {
   let v = 0;
   while (v === 0) v = rng.int(lo, hi);
   return v;
 }
-
 function coinFlip(rng: RNG) {
   return rng.int(0, 1) === 1;
 }
-
 function pickNonCollinearPair(rng: RNG, range: number) {
-  // ensure det != 0
   while (true) {
     const a = {
       x: randNonZeroInt(rng, -range, range),
@@ -54,7 +50,7 @@ export function genVectorsPart2(
   rng: RNG,
   diff: Difficulty,
   id: string
-): GenOut<Exercise> {
+): GenOut<ExerciseKind> {
   const range = diff === "easy" ? 4 : diff === "medium" ? 7 : 10;
 
   const archetype = rng.weighted([
@@ -68,10 +64,7 @@ export function genVectorsPart2(
     { value: "basis_coordinates_one" as const, w: diff === "easy" ? 1 : 4 },
   ]);
 
-  // IMPORTANT:
-  // Prisma expects topic to be a valid PracticeTopic enum value.
-  // Using "vectors" here prevents: "Invalid value for argument `topic`"
-  const TOPIC: any = "vectors";
+  const TOPIC = "vectors" as const;
 
   // ------------------------------------------------------------
   // 1) Vector set: finite/infinite/empty
@@ -122,7 +115,7 @@ $$
       answerId = "infinite";
     }
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -135,7 +128,7 @@ $$
         { id: "empty", text: "Empty" },
       ],
       hint: "If it contains “all real scalars λ”, that’s infinitely many vectors.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: answerId } };
   }
@@ -148,7 +141,6 @@ $$
     const v2 = { x: rng.int(-range, range), y: rng.int(-range, range) };
     const v3 = { x: rng.int(-range, range), y: rng.int(-range, range) };
 
-    // avoid all zero coefficients without recursion
     let l1 = 0, l2 = 0, l3 = 0;
     while (l1 === 0 && l2 === 0 && l3 === 0) {
       l1 = rng.int(-3, 3);
@@ -162,7 +154,7 @@ $$
     };
 
     const askX = coinFlip(rng);
-const asked = askX ? String.raw`$w_x$` : String.raw`$w_y$`;
+    const asked = askX ? String.raw`$w_x$` : String.raw`$w_y$`;
     const correctValue = askX ? w.x : w.y;
 
     const prompt = String.raw`
@@ -179,7 +171,7 @@ $$
 
 Compute ${asked}`.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -187,9 +179,7 @@ Compute ${asked}`.trim();
       title: "Linear weighted combination",
       prompt,
       hint: "Compute component-wise: add the x’s together, add the y’s together.",
-      correctValue,
-      tolerance: 0,
-    } as any;
+    };
 
     return {
       archetype,
@@ -199,7 +189,7 @@ Compute ${asked}`.trim();
   }
 
   // ------------------------------------------------------------
-  // 3) Independence: easy (2 vectors in R2: collinear or not)
+  // 3) Independence: easy (2 vectors in R2)
   // ------------------------------------------------------------
   if (archetype === "independent_or_dependent_easy") {
     const isDependent = coinFlip(rng);
@@ -228,13 +218,13 @@ Compute ${asked}`.trim();
     const prompt = String.raw`
 Consider the set
 $$
-S=${fmtSetVec2([v1, v2!])}.
+S=${fmtSetVec2([v1, v2])}.
 $$
 
 Is $S$ **linearly independent** or **linearly dependent**?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -246,7 +236,7 @@ Is $S$ **linearly independent** or **linearly dependent**?
         { id: "dep", text: "Dependent" },
       ],
       hint: "In ℝ²: two vectors are dependent iff one is a scalar multiple of the other.",
-    } as any;
+    };
 
     return {
       archetype,
@@ -256,7 +246,7 @@ Is $S$ **linearly independent** or **linearly dependent**?
   }
 
   // ------------------------------------------------------------
-  // 4) Independence: zero vector rule (always dependent)
+  // 4) Independence: zero vector rule
   // ------------------------------------------------------------
   if (archetype === "independence_zero_vector") {
     const v = { x: rng.int(-range, range), y: rng.int(-range, range) };
@@ -272,7 +262,7 @@ S=\left\{\vec 0,\;${fmtVec2(v.x, v.y)}\right\}.
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -284,19 +274,19 @@ $$
         { id: "false", text: "False" },
       ],
       hint: "If 0 is in the set, you can make 0 using a non-trivial combination.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "true" } };
   }
 
   // ------------------------------------------------------------
-  // 5) Span dimension in R2 (1D line vs all of ℝ²)
+  // 5) Span dimension in R2
   // ------------------------------------------------------------
   if (archetype === "span_dimension") {
     const kind = rng.pick(["oneVector", "twoCollinear", "twoIndependent"] as const);
 
     let vs: Array<{ x: number; y: number }> = [];
-    let dim = 1;
+    let dim: 1 | 2 = 1;
 
     if (kind === "oneVector") {
       const v = { x: randNonZeroInt(rng, -range, range), y: rng.int(-range, range) };
@@ -323,7 +313,7 @@ $$
 What is the **dimension** of $W$ as a subspace of $\mathbb{R}^2$?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -335,7 +325,7 @@ What is the **dimension** of $W$ as a subspace of $\mathbb{R}^2$?
         { id: "2", text: "2 (all of ℝ²)" },
       ],
       hint: "Dependent vectors span the same subspace as one of them.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: String(dim) } };
   }
@@ -378,7 +368,7 @@ Is $S$ a **subspace** of $\mathbb{R}^2$?
       ok = false;
     }
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -390,7 +380,7 @@ Is $S$ a **subspace** of $\mathbb{R}^2$?
         { id: "no", text: "No" },
       ],
       hint: "Subspace must contain (0,0) and be closed under + and scalar multiplication.",
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: ok ? "yes" : "no" } };
   }
@@ -424,7 +414,7 @@ $$
 Is $B$ a **basis for $\mathbb{R}^2$**?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -436,7 +426,7 @@ Is $B$ a **basis for $\mathbb{R}^2$**?
         { id: "no", text: "No" },
       ],
       hint: "In ℝ², two vectors form a basis iff det ≠ 0 (i.e., not collinear).",
-    } as any;
+    };
 
     return {
       archetype,
@@ -448,7 +438,7 @@ Is $B$ a **basis for $\mathbb{R}^2$**?
   // ------------------------------------------------------------
   // 8) Basis coordinates: ask for one coordinate
   // ------------------------------------------------------------
-  {
+  if (archetype === "basis_coordinates_one") {
     const { a: b1, b: b2 } = pickNonCollinearPair(rng, Math.max(3, Math.floor(range / 2)));
 
     const c1 = randNonZeroInt(rng, -3, 3);
@@ -476,7 +466,7 @@ $$
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: TOPIC,
       difficulty: diff,
@@ -484,14 +474,24 @@ $$
       title: "Coordinates in a basis",
       prompt,
       hint: "This one is designed to come out clean (integer coordinates).",
-      correctValue,
-      tolerance: 0,
-    } as any;
+    };
 
     return {
-      archetype: "basis_coordinates_one",
+      archetype,
       exercise,
       expected: { kind: "numeric", value: correctValue, tolerance: 0 },
     };
   }
+
+  // Fallback
+  const fallback: SingleChoiceExercise = {
+    id,
+    topic: TOPIC,
+    difficulty: diff,
+    kind: "single_choice",
+    title: "Vectors (fallback)",
+    prompt: "Fallback exercise.",
+    options: [{ id: "ok", text: "OK" }],
+  };
+  return { archetype: "fallback", exercise: fallback, expected: { kind: "single_choice", optionId: "ok" } };
 }

@@ -23,7 +23,13 @@ export async function GET() {
       slug: true,
       title: true,
       description: true,
-      topics: true,
+
+      // ✅ topics is now a join table
+      topics: {
+        orderBy: { order: "asc" },
+        select: { topic: { select: { slug: true } } },
+      },
+
       difficulty: true,
       questionCount: true,
       availableFrom: true,
@@ -35,7 +41,8 @@ export async function GET() {
 
   type AssignmentRow = Awaited<typeof assignmentsPromise>[number];
   const assignments = await assignmentsPromise;
-  console.log(`Fetched ${assignments} assignments for actor`, {
+
+  console.log(`Fetched ${assignments.length} assignments for actor`, {
     userId: actor.userId,
     guestId: actor.guestId,
   });
@@ -59,8 +66,16 @@ export async function GET() {
   return NextResponse.json({
     assignments: assignments.map((a: AssignmentRow) => {
       const used = counts.get(a.id) ?? 0;
+
+      // ✅ flatten join rows -> string[]
+      const topicSlugs = (a.topics ?? [])
+        .map((t) => t.topic?.slug)
+        .filter(Boolean) as string[];
+
       return {
         ...a,
+        topics: topicSlugs,
+
         attemptsUsed: used,
         attemptsRemaining:
           a.maxAttempts == null ? null : Math.max(0, a.maxAttempts - used),

@@ -1,4 +1,12 @@
-import type { Difficulty, Exercise } from "../../types";
+// src/lib/practice/generator/topics/dot.ts
+import type {
+  Difficulty,
+  Exercise,
+  ExerciseKind,
+  NumericExercise,
+  SingleChoiceExercise,
+  VectorDragDotExercise,
+} from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, dot as dot3, roundTo, toleranceFor } from "../utils";
 import { RNG } from "../rng";
@@ -8,7 +16,7 @@ function fmtVec2Latex(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
 
-export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "dot_classify" as const, w: diff === "easy" ? 5 : 1 },
     { value: "dot_numeric" as const, w: diff === "easy" ? 2 : 6 },
@@ -22,6 +30,8 @@ export function genDot(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise>
 
   // -------------------- dot_drag --------------------
   if (archetype === "dot_drag") {
+    const tol = toleranceFor(diff, "vector_drag_dot");
+
     const prompt = String.raw`
 Drag \(a\) so that the dot product matches the target.
 
@@ -32,7 +42,7 @@ $$
 ${diff === "hard" ? "Watch the sign." : ""}
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: VectorDragDotExercise = {
       id,
       topic: "dot",
       difficulty: diff,
@@ -42,13 +52,13 @@ ${diff === "hard" ? "Watch the sign." : ""}
       initialA: { x: 0, y: 0, z: 0 },
       b: B,
       targetDot: target,
-      tolerance: toleranceFor(diff, "vector_drag_dot"),
-    } as any;
+      tolerance: tol,
+    };
 
     return {
       archetype,
       exercise,
-      expected: { kind: "vector_drag_dot", targetDot: target, tolerance: exercise.tolerance },
+      expected: { kind: "vector_drag_dot", targetDot: target, tolerance: tol },
     };
   }
 
@@ -73,7 +83,7 @@ a \cdot b
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "dot",
       difficulty: diff,
@@ -86,7 +96,7 @@ $$
         { id: "negative", text: "Negative" },
         { id: "cannot", text: "Cannot be determined from given vectors" },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: correct } };
   }
@@ -125,7 +135,7 @@ W = F \cdot d = F_x d_x + F_y d_y
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: "dot",
       difficulty: diff,
@@ -133,9 +143,7 @@ $$
       title: "Work (dot product)",
       prompt,
       hint,
-      correctValue: rounded,
-      tolerance: tol,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "numeric", value: rounded, tolerance: tol } };
   }
@@ -170,7 +178,7 @@ $$
 `.trim()
       : undefined;
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "dot",
     difficulty: diff,
@@ -178,9 +186,7 @@ $$
     title: diff === "hard" ? "Dot product (tricky)" : "Dot product",
     prompt,
     hint,
-    correctValue: target,
-    tolerance: tol,
-  } as any;
+  };
 
   return { archetype, exercise, expected: { kind: "numeric", value: target, tolerance: tol } };
 }

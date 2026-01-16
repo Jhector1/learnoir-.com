@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const TOPICS = ["dot", "projection", "angle", "vectors"] as const;
 const DIFFICULTIES = ["easy", "medium", "hard"] as const;
 
 function slugifyLite(s: string) {
@@ -87,6 +86,9 @@ function Button({
   );
 }
 
+type Topic = { id: string; slug: string; titleKey?: string | null; order?: number | null };
+type Section = { id: string; title: string; slug: string; topics: Topic[] };
+
 export default function AssignmentEditor({
   mode,
   initialAssignment,
@@ -94,7 +96,7 @@ export default function AssignmentEditor({
 }: {
   mode: "new" | "edit";
   initialAssignment: any | null;
-  sections: Array<{ id: string; title: string; slug: string; topics: string[] }>;
+  sections: Section[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -104,6 +106,11 @@ export default function AssignmentEditor({
 
   const [state, setState] = useState(() => {
     const a = initialAssignment;
+
+    const fallbackSectionId = a?.sectionId ?? sections?.[0]?.id ?? "";
+    const fallbackSection = sections.find((s) => s.id === fallbackSectionId) ?? sections?.[0];
+    const firstTopicId = fallbackSection?.topics?.[0]?.id ?? "";
+
     return {
       id: a?.id ?? null,
       status: a?.status ?? "draft",
@@ -111,8 +118,18 @@ export default function AssignmentEditor({
       title: a?.title ?? "",
       description: a?.description ?? "",
 
-      sectionId: a?.sectionId ?? sections?.[0]?.id ?? "",
-      topics: (a?.topics?.length ? a.topics : ["dot"]) as string[],
+      sectionId: fallbackSectionId,
+
+      // ✅ store topic IDs now
+      topicIds:
+        (Array.isArray(a?.topicIds) && a.topicIds.length
+          ? a.topicIds
+          : Array.isArray(a?.topics) && a.topics.length && typeof a.topics[0] === "string"
+          ? a.topics // (legacy: if old payload used slugs, you can remove this later)
+          : firstTopicId
+          ? [firstTopicId]
+          : []) as string[],
+
       difficulty: a?.difficulty ?? "easy",
       questionCount: a?.questionCount ?? 10,
 
@@ -138,13 +155,15 @@ export default function AssignmentEditor({
     [sections, state.sectionId]
   );
 
-  // Constrain topics to section topics (if section has specific topics)
+  // ✅ Constrain selected topicIds to section topics
   useEffect(() => {
     if (!selectedSection?.topics?.length) return;
+
     setState((s: any) => {
-      const allowed = new Set(selectedSection.topics);
-      const nextTopics = (s.topics ?? []).filter((t: string) => allowed.has(t));
-      return { ...s, topics: nextTopics.length ? nextTopics : [selectedSection.topics[0]] };
+      const allowed = new Set(selectedSection.topics.map((t) => t.id));
+      const next = (s.topicIds ?? []).filter((id: string) => allowed.has(id));
+      const fallback = selectedSection.topics[0]?.id ? [selectedSection.topics[0].id] : [];
+      return { ...s, topicIds: next.length ? next : fallback };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sectionId]);
@@ -158,7 +177,10 @@ export default function AssignmentEditor({
         title: state.title,
         description: state.description || null,
         sectionId: state.sectionId,
-        topics: state.topics,
+
+        // ✅ send topicIds (API will rewrite join table)
+        topicIds: state.topicIds,
+
         difficulty: state.difficulty,
         questionCount: Number(state.questionCount),
         availableFrom: state.availableFrom || null,
@@ -189,7 +211,12 @@ export default function AssignmentEditor({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Failed to save");
-      setState((s: any) => ({ ...s, status: json.assignment.status }));
+      setState((s: any) => ({
+        ...s,
+        status: json.assignment.status,
+        // keep server truth if it returns topicIds
+        topicIds: json.assignment.topicIds ?? s.topicIds,
+      }));
       router.refresh();
     } catch (e: any) {
       setErr(e?.message ?? "Save failed");
@@ -250,7 +277,7 @@ export default function AssignmentEditor({
     }
   }
 
-  const allowedTopics = selectedSection?.topics?.length ? selectedSection.topics : (TOPICS as any);
+  const allowedTopics: Topic[] = selectedSection?.topics?.length ? selectedSection.topics : [];
 
   return (
     <div className="space-y-6">
@@ -337,8 +364,12 @@ export default function AssignmentEditor({
                   </option>
                 ))}
               </Select>
+
               <div className="mt-1 text-xs text-neutral-500">
-                Topics allowed: {selectedSection?.topics?.join(", ") ?? "all"}
+                Topics allowed:{" "}
+                {selectedSection?.topics?.length
+                  ? selectedSection.topics.map((t) => t.slug).join(", ")
+                  : "—"}
               </div>
             </div>
 
@@ -359,11 +390,13 @@ export default function AssignmentEditor({
             <div>
               <Label>Topics</Label>
               <div className="mt-2 flex flex-wrap gap-2">
-                {allowedTopics.map((t: string) => {
-                  const checked = state.topics.includes(t);
+                {allowedTopics.map((t) => {
+                  const checked = state.topicIds.includes(t.id);
+                  const label = t.titleKey ?? t.slug;
+
                   return (
                     <label
-                      key={t}
+                      key={t.id}
                       className={[
                         "cursor-pointer select-none rounded-full border px-3 py-1 text-xs font-medium",
                         checked
@@ -377,21 +410,20 @@ export default function AssignmentEditor({
                         checked={checked}
                         onChange={(e) => {
                           setState((s: any) => {
-                            const next = new Set(s.topics);
-                            if (e.target.checked) next.add(t);
-                            else next.delete(t);
-                            return { ...s, topics: Array.from(next) };
+                            const next = new Set(s.topicIds);
+                            if (e.target.checked) next.add(t.id);
+                            else next.delete(t.id);
+                            return { ...s, topicIds: Array.from(next) };
                           });
                         }}
                       />
-                      {t}
+                      {label}
                     </label>
                   );
                 })}
               </div>
-              <div className="mt-1 text-xs text-neutral-500">
-                Pick at least one topic.
-              </div>
+
+              <div className="mt-1 text-xs text-neutral-500">Pick at least one topic.</div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -402,9 +434,7 @@ export default function AssignmentEditor({
                   min={1}
                   max={100}
                   value={state.questionCount}
-                  onChange={(e) =>
-                    setState((s: any) => ({ ...s, questionCount: e.target.value }))
-                  }
+                  onChange={(e) => setState((s: any) => ({ ...s, questionCount: e.target.value }))}
                 />
               </div>
               <div>
@@ -413,9 +443,7 @@ export default function AssignmentEditor({
                   type="number"
                   min={0}
                   value={state.timeLimitSec}
-                  onChange={(e) =>
-                    setState((s: any) => ({ ...s, timeLimitSec: e.target.value }))
-                  }
+                  onChange={(e) => setState((s: any) => ({ ...s, timeLimitSec: e.target.value }))}
                   placeholder="(optional)"
                 />
               </div>

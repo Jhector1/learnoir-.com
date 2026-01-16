@@ -17,6 +17,17 @@ export const ALL_TOPICS: Topic[] = [
   "vectors_part2",
    "vectors_part1",
   "matrix_properties",
+
+
+  // ✅ Matrices — Part 1
+  "matrices_intro",
+  "index_slice",
+  "special",
+  "elementwise_shift",
+  "matmul",
+  "matvec",
+  "transpose_liveevil",
+  "symmetric"
 ];
 
 export function normalizeTopic(t: Topic | "all", rng: RNG): Topic {

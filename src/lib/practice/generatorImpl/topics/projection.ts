@@ -1,4 +1,5 @@
-import type { Difficulty, Exercise } from "../../types";
+// src/lib/practice/generator/topics/projection.ts
+import type { Difficulty, Exercise, ExerciseKind, NumericExercise, SingleChoiceExercise } from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, dot, mag2D, roundTo } from "../utils";
 import { RNG } from "../rng";
@@ -7,7 +8,7 @@ function fmtVec2Latex(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
 
-export function genProjection(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+export function genProjection(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "proj_numeric" as const, w: 6 },
     { value: "proj_concept" as const, w: diff === "easy" ? 5 : 3 },
@@ -32,7 +33,7 @@ $$
 is the vector projection of \(a\) onto \(b\).
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "projection",
       difficulty: diff,
@@ -45,7 +46,7 @@ is the vector projection of \(a\) onto \(b\).
         { id: "sameLen", text: "It always has length |a|" },
         { id: "undef", text: "It is undefined if b ≠ 0" },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: "parallel" } };
   }
@@ -77,7 +78,7 @@ $$
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "projection",
       difficulty: diff,
@@ -90,7 +91,7 @@ $$
         { id: "negative", text: "Negative" },
         { id: "depends", text: "Depends on |a|, cannot be determined" },
       ],
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "single_choice", optionId: sign } };
   }
@@ -127,7 +128,7 @@ $$
 `.trim()
       : undefined;
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "projection",
     difficulty: diff,
@@ -135,9 +136,7 @@ $$
     title: diff === "hard" ? "Scalar projection (tricky)" : "Scalar projection",
     prompt,
     hint,
-    correctValue: value,
-    tolerance: tol,
-  } as any;
+  };
 
   return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
 }

@@ -1,5 +1,13 @@
 // src/lib/practice/generator/topics/linearSystems.ts
-import type { Difficulty, Exercise, Vec3 } from "../../types";
+import type {
+  Difficulty,
+  Exercise,
+  NumericExercise,
+  SingleChoiceExercise,
+  VectorDragTargetExercise,
+  Vec3,
+  ExerciseKind,
+} from "../../types";
 import type { GenOut } from "../expected";
 import { RNG } from "../rng";
 import { randNonZeroInt, uniq } from "../utils";
@@ -13,10 +21,6 @@ function fmtSystemLatex(
   b2: number,
   c2: number
 ) {
-  // Writes:
-  // a1 x + b1 y = c1
-  // a2 x + b2 y = c2
-  // with clean sign formatting for b terms.
   const line = (a: number, b: number, c: number) => {
     const sign = b < 0 ? "-" : "+";
     const bb = Math.abs(b);
@@ -37,7 +41,7 @@ export function genLinearSystems(
   rng: RNG,
   diff: Difficulty,
   id: string
-): GenOut<Exercise> {
+): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "drag_solve" as const, w: 5 },
     { value: "which_point" as const, w: 3 },
@@ -45,7 +49,7 @@ export function genLinearSystems(
     { value: "word_problem" as const, w: diff === "hard" ? 3 : 2 },
   ]);
 
-  // Loop until a decent det (avoids recursion bug)
+  // Loop until decent det
   let x = 0,
     y = 0,
     a1 = 0,
@@ -95,7 +99,7 @@ ${sysLatex}
 Drag point \(a\) to the solution.
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: VectorDragTargetExercise = {
       id,
       topic: "linear_systems",
       difficulty: diff,
@@ -107,7 +111,7 @@ Drag point \(a\) to the solution.
       targetA: { x, y, z: 0 },
       lockB: true,
       tolerance: tol,
-    } as any;
+    };
 
     return {
       archetype,
@@ -152,7 +156,7 @@ Which point satisfies **both** equations?
 ${sysLatex}
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "linear_systems",
       difficulty: diff,
@@ -161,10 +165,9 @@ ${sysLatex}
       prompt,
       options: choices.map((c) => ({
         id: c.id,
-        // ✅ make the point render in KaTeX (same approach as matrixOps options)
-text: String.raw`$(${c.p.x}, ${c.p.y})$`,
+        text: String.raw`$(${c.p.x}, ${c.p.y})$`,
       })),
-    } as any;
+    };
 
     const correctId = choices.find((c) => c.p.x === x && c.p.y === y)!.id;
 
@@ -178,7 +181,13 @@ text: String.raw`$(${c.p.x}, ${c.p.y})$`,
   // -------------------- check_candidate (single_choice) --------------------
   if (archetype === "check_candidate") {
     const isTrue = rng.float() < 0.5;
-    const cand = isTrue ? { x, y } : (rng.pick(decoys) as any);
+
+    const cand: { x: number; y: number } = isTrue
+      ? { x, y }
+      : (() => {
+          const p = rng.pick(decoys);
+          return { x: p.x, y: p.y };
+        })();
 
     const prompt = String.raw`
 Does \((x, y) = (${cand.x},\,${cand.y})\) satisfy the system?
@@ -186,7 +195,7 @@ Does \((x, y) = (${cand.x},\,${cand.y})\) satisfy the system?
 ${sysLatex}
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "linear_systems",
       difficulty: diff,
@@ -197,7 +206,7 @@ ${sysLatex}
         { id: "true", text: "Yes" },
         { id: "false", text: "No" },
       ],
-    } as any;
+    };
 
     return {
       archetype,
@@ -213,7 +222,7 @@ ${sysLatex}
   const Cqty = Math.max(1, Math.abs(y) + 1);
   const total = adult * Aqty + child * Cqty;
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "linear_systems",
     difficulty: diff,
@@ -224,9 +233,7 @@ ${sysLatex}
       `A group buys ${Aqty + Cqty} tickets total for \\$${total}.\n` +
       `How many adult tickets did they buy?`,
     hint: "Let a = adults, c = children. Use a + c = total tickets and adult*a + child*c = total cost.",
-    correctValue: Aqty,
-    tolerance: 0,
-  } as any;
+  };
 
   return {
     archetype,

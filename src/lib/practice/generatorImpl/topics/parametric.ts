@@ -1,34 +1,47 @@
 // src/lib/practice/generator/topics/parametric.ts
-import type { Difficulty, Exercise } from "../../types";
+import type { Difficulty, Exercise, ExerciseKind, SingleChoiceExercise } from "../../types";
 import type { GenOut } from "../expected";
-import { RNG } from "../rng";
+import type { RNG } from "../rng";
 import { randNonZeroInt } from "../utils";
 
-function linTerm(coef: number, t = "t") {
+// ---------------- LaTeX helpers ----------------
+function signedLin(coef: number, sym = "t") {
   const sign = coef < 0 ? "-" : "+";
   const abs = Math.abs(coef);
   const coefStr = abs === 1 ? "" : String(abs);
-  return `${sign} ${coefStr}${t}`;
+  return String.raw`${sign} ${coefStr}${sym}`;
 }
 
-function paramLine(p: number, q: number, r: number, s: number) {
-  // Plain text choice (no LaTeX) => renders cleanly in radio list
-  return `x = ${p} ${linTerm(r)},  y = ${q} ${linTerm(s)}`;
+function paramLineLatex(p: number, q: number, r: number, s: number) {
+  // x = p + r t, y = q + s t   (with signs handled)
+  return String.raw`
+$$
+\begin{cases}
+x = ${p} ${signedLin(r)}\\
+y = ${q} ${signedLin(s)}
+\end{cases}
+$$
+`.trim();
 }
 
 type DraftChoice = { text: string; correct: boolean };
 
-export function genParametric(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+export function genParametric(
+  rng: RNG,
+  diff: Difficulty,
+  id: string
+): GenOut<ExerciseKind> {
   const p = rng.int(-4, 4);
   const q = rng.int(-4, 4);
   const r = randNonZeroInt(rng, -4, 4);
   const s = randNonZeroInt(rng, -4, 4);
 
-  const correctText = paramLine(p, q, r, s);
+  const correctText = paramLineLatex(p, q, r, s);
 
-  const wrong1 = paramLine(p, q, s, r);     // swapped directions
-  const wrong3 = paramLine(p, q, r, -s);    // sign error in one component
-  const wrong4 = paramLine(p + 1, q, r, s); // shifted point
+  // wrong choices
+  const wrong1 = paramLineLatex(p, q, s, r);     // swap direction components
+  const wrong3 = paramLineLatex(p, q, r, -s);    // flip one component
+  const wrong4 = paramLineLatex(p + 1, q, r, s); // shift point
 
   const draftPool: DraftChoice[] = [
     { text: correctText, correct: true },
@@ -42,19 +55,27 @@ export function genParametric(rng: RNG, diff: Difficulty, id: string): GenOut<Ex
   const choices = shuffled.map((c, i) => ({ ...c, id: ids[i] }));
   const correctId = choices.find((c) => c.correct)!.id;
 
-  const exercise: Exercise = {
+  const prompt = String.raw`
+A line of solutions can be written in **parametric form**.
+
+A common pattern is:
+$$
+\mathbf{x}(t)=\mathbf{x}_0+t\,\mathbf{v},\quad t\in\mathbb{R}.
+$$
+
+Which option below is a valid parametric representation? (The parameter $t$ is free.)
+`.trim();
+
+  const exercise: SingleChoiceExercise = {
     id,
     topic: "parametric",
     difficulty: diff,
     kind: "single_choice",
     title: "Parametric form",
-    // ✅ Markdown paragraphs, avoids weird wrapping
-    prompt: [
-      "A line of solutions can be written in parametric form.",
-      "Which option is a valid parametric representation? (t is free)",
-    ].join("\n\n"),
+    prompt,
     options: choices.map((c) => ({ id: c.id, text: c.text })),
-  } as any;
+    hint: "A parametric line looks like a starting point plus a direction times a free parameter t.",
+  };
 
   return {
     archetype: "parametric_pattern",

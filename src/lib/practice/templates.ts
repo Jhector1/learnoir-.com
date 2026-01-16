@@ -5,7 +5,7 @@ import type { ExercisePublic, Vec3 } from "./serverTypes";
 export type Generated = {
   title: string;
   prompt: string;
-  topic: PracticeTopic;
+  topic: string;
   kind: ExercisePublic["kind"];
   publicPayload: ExercisePublic;
   secretPayload: any; // correct/tolerance/etc
@@ -187,7 +187,7 @@ export function generateVectorDragDot(difficulty: PracticeDifficulty): Generated
   };
 }
 
-export function getGeneratorsByTopic(topic: PracticeTopic) {
+export function getGeneratorsByTopic(topic: string) {
   switch (topic) {
     case "dot":
       return [generateSingleChoiceDotConcept, generateNumericDotCompute, generateVectorDragDot];
@@ -203,7 +203,7 @@ export function getGeneratorsByTopic(topic: PracticeTopic) {
   }
 }
 
-export function generateAny(topic: PracticeTopic, difficulty: PracticeDifficulty): Generated {
+export function generateAny(topic: string, difficulty: PracticeDifficulty): Generated {
   const gens = getGeneratorsByTopic(topic);
   return pick(gens)(difficulty);
 }

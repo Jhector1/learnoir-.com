@@ -1,5 +1,5 @@
 // src/lib/practice/generator/topics/matrixInverse.ts
-import type { Difficulty, Exercise } from "../../types";
+import type { Difficulty, Exercise, ExerciseKind, NumericExercise, SingleChoiceExercise } from "../../types";
 import type { GenOut } from "../expected";
 import { RNG } from "../rng";
 import { make2x2, det2, roundTo } from "../utils";
@@ -9,11 +9,7 @@ function fmt2x2Latex(M: number[][]) {
   return String.raw`\begin{bmatrix}${M[0][0]} & ${M[0][1]}\\ ${M[1][0]} & ${M[1][1]}\end{bmatrix}`;
 }
 
-export function genMatrixInverse(
-  rng: RNG,
-  diff: Difficulty,
-  id: string
-): GenOut<Exercise> {
+export function genMatrixInverse(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "invertible_yesno" as const, w: 4 },
     { value: "det_numeric" as const, w: 3 },
@@ -53,7 +49,7 @@ $$
 Is \(A\) invertible?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "matrix_inverse",
       difficulty: diff,
@@ -64,15 +60,12 @@ Is \(A\) invertible?
         { id: "yes", text: "Yes (det(A) ≠ 0)" },
         { id: "no", text: "No (det(A) = 0)" },
       ],
-    } as any;
+    };
 
     return {
       archetype,
       exercise,
-      expected: {
-        kind: "single_choice",
-        optionId: Math.abs(d) < 1e-9 ? "no" : "yes",
-      },
+      expected: { kind: "single_choice", optionId: Math.abs(d) < 1e-9 ? "no" : "yes" },
     };
   }
 
@@ -81,13 +74,12 @@ Is \(A\) invertible?
     const prompt = String.raw`
 Compute $\det(A)$ for
 
-
 $$
 A=${fmt2x2Latex(A)}.
 $$
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: "matrix_inverse",
       difficulty: diff,
@@ -95,15 +87,9 @@ $$
       title: "Determinant of a 2×2",
       prompt,
       hint: "For $A=\\begin{bmatrix}a & b\\\\ c & d\\end{bmatrix}$, $\\det(A)=ad-bc$.",
-      correctValue: d,
-      tolerance: 0,
-    } as any;
-
-    return {
-      archetype,
-      exercise,
-      expected: { kind: "numeric", value: d, tolerance: 0 },
     };
+
+    return { archetype, exercise, expected: { kind: "numeric", value: d, tolerance: 0 } };
   }
 
   // -------------------- inv_entry (numeric) --------------------
@@ -125,18 +111,17 @@ $$
 A=${fmt2x2Latex(A)}.
 $$
 
-Compute $(A^{-1})_{11}$. Round to 2 decimal places.
-
+Compute $(A^{-1})_{11}$. Round to ${decimals} decimal place(s).
 `.trim();
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "matrix_inverse",
     difficulty: diff,
     kind: "numeric",
     title: "One entry of the inverse",
     prompt,
-hint: String.raw`
+    hint: String.raw`
 Use the inverse formula:
 
 $$
@@ -147,13 +132,7 @@ d & -b\\
 \end{bmatrix}.
 $$
 `.trim(),
-    correctValue: value,
-    tolerance: tol,
-  } as any;
-
-  return {
-    archetype,
-    exercise,
-    expected: { kind: "numeric", value, tolerance: tol },
   };
+
+  return { archetype, exercise, expected: { kind: "numeric", value, tolerance: tol } };
 }

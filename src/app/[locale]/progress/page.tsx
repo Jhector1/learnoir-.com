@@ -1,6 +1,8 @@
 // src/app/progress/page.tsx
 "use client";
 
+import { difficultyOptions, topicOptions } from "@/components/vectorpad/types";
+import { GenKey } from "@/lib/practice/types";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   LineChart,
@@ -17,22 +19,7 @@ import {
   Cell,
 } from "recharts";
 
-export type Topic =
-  // Module 0
-  | "dot"
-  | "projection"
-  | "angle"
-  | "vectors"
-  // Module 1
-  | "linear_systems"
-  | "augmented"
-  | "rref"
-  | "solution_types"
-  | "parametric"
-  // Module 2
-  | "matrix_ops"
-  | "matrix_inverse"
-  | "matrix_properties";
+export type Topic =string;
 type Difficulty = "easy" | "medium" | "hard";
 
 type ProgressResponse = {
@@ -94,26 +81,16 @@ async function readJsonSafe(res: Response) {
   }
 }
 
-const TOPIC_OPTIONS: Array<{ id: Topic | "all"; label: string }> = [
-  { id: "all", label: "All topics" },
-  { id: "dot", label: "Dot" },
-  { id: "projection", label: "Projection" },
-  { id: "angle", label: "Angle" },
-  { id: "vectors", label: "Vectors" },
-];
+const TOPIC_OPTIONS = topicOptions;
 
-const DIFF_OPTIONS: Array<{ id: Difficulty | "all"; label: string }> = [
-  { id: "all", label: "All difficulty" },
-  { id: "easy", label: "Easy" },
-  { id: "medium", label: "Medium" },
-  { id: "hard", label: "Hard" },
-];
+const DIFF_OPTIONS = difficultyOptions;
 
 const RANGE_OPTIONS = [
   { id: "7d", label: "Last 7 days" },
   { id: "30d", label: "Last 30 days" },
   { id: "90d", label: "Last 90 days" },
 ];
+
 
 export default function ProgressPage() {
   const [range, setRange] = useState("30d");
@@ -152,6 +129,11 @@ export default function ProgressPage() {
 
   const palette = useMemo(() => ["#7aa2ff", "#ff6bd6", "#53f7b6", "#ffdf6b", "#b59bff"], []);
 
+const topicLabelById = useMemo(() => {
+  const m = new Map<string, string>();
+  TOPIC_OPTIONS.forEach(x => m.set(x.id, x.label));
+  return m;
+}, []);
   return (
     <div className="min-h-screen bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
       <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8">
@@ -226,7 +208,7 @@ export default function ProgressPage() {
           <KPI
             title="Sessions • Streak"
             value={data ? `${data.totals.sessionsCompleted} • ${data.totals.streakDays}d` : busy ? "…" : "—"}
-            sub={data ? `Best topic: ${data.totals.bestTopic}` : ""}
+sub={data ? `Best topic: ${topicLabelById.get(data.totals.bestTopic) ?? data.totals.bestTopic}` : ""}
           />
         </div>
 
@@ -374,7 +356,7 @@ export default function ProgressPage() {
             </div>
           </Card>
 
-          <Card title="Missed questions" subtitle="Review what you got wrong">
+          {/* <Card title="Missed questions" subtitle="Review what you got wrong">
             {!data?.missed?.length ? (
               <div className="text-sm text-white/70">No missed questions in this range 🎉</div>
             ) : (
@@ -391,16 +373,18 @@ export default function ProgressPage() {
                     <div className="mt-2 text-sm font-black text-white/90">{m.title}</div>
                     <div className="mt-1 text-xs text-white/70">{m.prompt}</div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-2">
-                        <div className="font-extrabold text-white/80">Your answer</div>
-                        <div className="mt-1 font-mono text-white/85">{JSON.stringify(m.userAnswer)}</div>
-                      </div>
-                      <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2">
-                        <div className="font-extrabold text-white/80">Expected</div>
-                        <div className="mt-1 font-mono text-white/85">{JSON.stringify(m.expected)}</div>
-                      </div>
-                    </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+  <div className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-2">
+    <div className="font-extrabold text-white/80">Your answer</div>
+    <JsonBlock value={m.userAnswer} />
+  </div>
+
+  <div className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-2">
+    <div className="font-extrabold text-white/80">Expected</div>
+    <JsonBlock value={m.expected} />
+  </div>
+</div>
+
 
                     {m.explanation ? (
                       <div className="mt-2 text-xs text-white/65">
@@ -411,7 +395,7 @@ export default function ProgressPage() {
                 ))}
               </div>
             )}
-          </Card>
+          </Card> */}
         </div>
       </div>
     </div>
@@ -421,8 +405,46 @@ export default function ProgressPage() {
 
 
 
+function prettyJson(v: any) {
+  if (v === undefined) return "—";
+  if (typeof v === "string") return v; // keep strings readable
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
+  }
+}
+
+// function JsonBlock({ value }: { value: any }) {
+//   const text = prettyJson(value);
+//   return (
+//     <pre
+//       className={cn(
+//         "mt-1 rounded-lg border border-white/10 bg-black/30 p-2",
+//         "font-mono text-[11px] leading-relaxed text-white/85",
+//         "whitespace-pre-wrap break-words", // ✅ wraps nicely
+//         "max-h-40 overflow-auto" // ✅ prevents huge cards
+//       )}
+//     >
+//       {text}
+//     </pre>
+//   );
+// }
 
 
+function JsonBlock({ value, label = "View JSON" }: { value: any; label?: string }) {
+  const text = prettyJson(value);
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer select-none text-[11px] font-extrabold text-white/70 hover:text-white/85">
+        {label}
+      </summary>
+      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/30 p-2 font-mono text-[11px] leading-relaxed text-white/85">
+        {text}
+      </pre>
+    </details>
+  );
+}
 
 
 

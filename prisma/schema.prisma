@@ -15,30 +15,9 @@ datasource db {
 
 // prisma/schema.prisma
 
-enum PracticeTopic {
-  dot
-  projection
-  angle
-  vectors
-
-  linear_systems
-  augmented
-  rref
-  solution_types
-  parametric
-
-
-   // Module 2 — Matrices
-  matrix_ops
-  matrix_inverse
-  matrix_properties
-
-    vectors_part2  
-    vectors_part1
-
-}
-
-
+// -----------------------------
+// Practice / Learning Models
+// -----------------------------
 
 model PracticeModule {
   id          String   @id @default(cuid())
@@ -55,19 +34,65 @@ model PracticeModule {
   updatedAt DateTime @updatedAt
 
   sections PracticeSection[]
+  topics   PracticeTopic[]
 
   @@index([order])
 }
 
+// ✅ Scalable topic table (replaces enum PracticeTopic)
+model PracticeTopic {
+  id          String   @id @default(cuid())
+  slug        String   @unique // e.g. "m0.dot", "m2.matmul"
+  titleKey    String
+  description String?
+  order       Int      @default(0)
+  meta        Json?
+
+  // ✅ NEW: which generator engine to use (small set)
+  genKey      String?
+
+  moduleId String?
+  module   PracticeModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sectionLinks    PracticeSectionTopic[]
+  assignmentLinks AssignmentTopic[]
+  instances       PracticeQuestionInstance[]
+
+  @@index([moduleId, order])
+  @@index([genKey])
+}
 
 
+// Join table: Section <-> Topic
+model PracticeSectionTopic {
+  sectionId String
+  topicId   String
+  order     Int @default(0)
 
+  section PracticeSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  topic   PracticeTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
+  @@id([sectionId, topicId])
+  @@index([topicId])
+  @@index([sectionId, order])
+}
 
+// Join table: Assignment <-> Topic
+model AssignmentTopic {
+  assignmentId String
+  topicId      String
+  order        Int @default(0)
 
+  assignment Assignment    @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  topic      PracticeTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-
-
+  @@id([assignmentId, topicId])
+  @@index([topicId])
+  @@index([assignmentId, order])
+}
 
 enum PracticeKind {
   single_choice
@@ -94,7 +119,10 @@ model PracticeQuestionInstance {
   sessionId String?
   session   PracticeSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
-  topic      PracticeTopic
+  // ✅ Topic is now a FK to PracticeTopic
+  topicId String
+  topic   PracticeTopic @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
   kind       PracticeKind
   difficulty PracticeDifficulty
 
@@ -113,7 +141,7 @@ model PracticeQuestionInstance {
   attempts PracticeAttempt[]
 
   @@index([sessionId])
-  @@index([topic, difficulty])
+  @@index([topicId, difficulty])
 }
 
 model PracticeAttempt {
@@ -149,26 +177,27 @@ enum AssignmentStatus {
 }
 
 model PracticeSection {
-  id          String          @id @default(cuid())
-  slug        String          @unique
+  id          String @id @default(cuid())
+  slug        String @unique
   title       String
   description String?
-  order       Int             @default(0)
-  topics      PracticeTopic[]
+  order       Int    @default(0)
+
+  // ✅ topics are now scalable via join table
+  topics PracticeSectionTopic[]
 
   moduleId String?
   module   PracticeModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  meta        Json?           // ✅ store module info (weeks, bullets, skills, etc.)
+  meta      Json? // ✅ store module info (weeks, bullets, skills, etc.)
 
   sessions    PracticeSession[]
-  assignments Assignment[]      @relation("SectionAssignments")
+  assignments Assignment[] @relation("SectionAssignments")
 
   @@index([moduleId])
 }
-
 
 model PracticeSession {
   id     String                @id @default(cuid())
@@ -181,7 +210,7 @@ model PracticeSession {
   section   PracticeSection @relation(fields: [sectionId], references: [id], onDelete: Restrict)
 
   difficulty  PracticeDifficulty
-  targetCount Int                @default(10)
+  targetCount Int @default(10)
 
   total   Int @default(0)
   correct Int @default(0)
@@ -210,9 +239,11 @@ model Assignment {
   sectionId String
   section   PracticeSection @relation("SectionAssignments", fields: [sectionId], references: [id], onDelete: Restrict)
 
-  topics        PracticeTopic[]
+  // ✅ topics are now scalable via join table
+  topics AssignmentTopic[]
+
   difficulty    PracticeDifficulty
-  questionCount Int                @default(10)
+  questionCount Int @default(10)
 
   availableFrom DateTime?
   dueAt         DateTime?
@@ -230,17 +261,10 @@ model Assignment {
   @@index([sectionId])
 }
 
+// -----------------------------
+// Auth.js / NextAuth Models
+// -----------------------------
 
-
-
-
-
-
-
-
-
-
-// --- Auth.js / NextAuth tables (Prisma Adapter) ---
 model User {
   id            String   @id @default(cuid())
   name          String?
@@ -300,7 +324,10 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// --- Stripe subscription tracking ---
+// -----------------------------
+// Stripe Subscription Tracking
+// -----------------------------
+
 enum StripeSubscriptionStatus {
   trialing
   active
@@ -313,19 +340,19 @@ enum StripeSubscriptionStatus {
 }
 
 model Subscription {
-  id                   String                    @id @default(cuid())
+  id                   String                   @id @default(cuid())
   userId               String
   stripeCustomerId     String
-  stripeSubscriptionId String                    @unique
+  stripeSubscriptionId String                   @unique
   status               StripeSubscriptionStatus
   priceId              String?
 
-  currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean                   @default(false)
-  trialEnd             DateTime?
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean @default(false)
+  trialEnd          DateTime?
 
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

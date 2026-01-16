@@ -60,7 +60,7 @@ export default function HeaderSlick({
   return (
     <header className="sticky top-0 z-50">
       <div className="mt-2 flex items-center justify-between">
-  <LocaleSwitcher className="w-full" />
+  <LocaleSwitcher  />
 </div>
 
       <div

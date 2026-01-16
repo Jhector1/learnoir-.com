@@ -33,8 +33,10 @@ export const AssignmentCreateSchema = z.object({
   description: z.string().max(5000).nullable().optional(),
 
   sectionId: z.string().min(1),
+  topicIds: z.array(z.string()).optional(),
 
-  topics: z.array(z.enum(PRACTICE_TOPICS)).min(1),
+
+topics: z.array(z.object({ topicId: z.string(), order: z.number().optional() })).optional(),
   difficulty: z.enum(PRACTICE_DIFFICULTIES),
   questionCount: z.number().int().min(1).max(100).default(10),
 

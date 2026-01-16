@@ -1,5 +1,5 @@
 // src/lib/practice/generator/topics/matrixOps.ts
-import type { Difficulty, Exercise } from "../../types";
+import type { Difficulty, Exercise, ExerciseKind, NumericExercise, SingleChoiceExercise } from "../../types";
 import type { GenOut } from "../expected";
 import { RNG } from "../rng";
 import { make2x2 } from "../utils";
@@ -8,7 +8,6 @@ import { make2x2 } from "../utils";
 function fmt2x2Latex(M: number[][]) {
   return String.raw`\begin{bmatrix}${M[0][0]} & ${M[0][1]}\\ ${M[1][0]} & ${M[1][1]}\end{bmatrix}`;
 }
-
 function fmtVec2Latex(x: number, y: number) {
   return String.raw`\begin{bmatrix}${x}\\ ${y}\end{bmatrix}`;
 }
@@ -26,11 +25,7 @@ function mul2x2(A: number[][], B: number[][]) {
   ];
 }
 
-export function genMatrixOps(
-  rng: RNG,
-  diff: Difficulty,
-  id: string
-): GenOut<Exercise> {
+export function genMatrixOps(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "entry_AB" as const, w: 4 },
     { value: "dims_defined" as const, w: 3 },
@@ -63,13 +58,12 @@ export function genMatrixOps(
 
     const ok = dimA.c === dimB.r;
 
-    // ✅ dimension prompt (NO fmt2x2Latex here)
     const prompt = String.raw`
 Let \(A\) be a \(${dimA.r}\times ${dimA.c}\) matrix and \(B\) be a \(${dimB.r}\times ${dimB.c}\) matrix.
 Is the product \(AB\) defined?
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "matrix_ops",
       difficulty: diff,
@@ -80,13 +74,9 @@ Is the product \(AB\) defined?
         { id: "yes", text: "Yes" },
         { id: "no", text: "No" },
       ],
-    } as any;
-
-    return {
-      archetype,
-      exercise,
-      expected: { kind: "single_choice", optionId: ok ? "yes" : "no" },
     };
+
+    return { archetype, exercise, expected: { kind: "single_choice", optionId: ok ? "yes" : "no" } };
   }
 
   // -------------------- entry_AplusB (numeric) --------------------
@@ -107,7 +97,7 @@ $$
 Compute $(A+B)_{21}$ (row 2, column 1).
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: "matrix_ops",
       difficulty: diff,
@@ -115,15 +105,9 @@ Compute $(A+B)_{21}$ (row 2, column 1).
       title: "Matrix addition entry",
       prompt,
       hint: "Addition is entrywise.",
-      correctValue: val,
-      tolerance: 0,
-    } as any;
-
-    return {
-      archetype,
-      exercise,
-      expected: { kind: "numeric", value: val, tolerance: 0 },
     };
+
+    return { archetype, exercise, expected: { kind: "numeric", value: val, tolerance: 0 } };
   }
 
   // -------------------- entry_Av (numeric) --------------------
@@ -145,7 +129,7 @@ $$
 Compute the first component of $Av$.
 `.trim();
 
-    const exercise: Exercise = {
+    const exercise: NumericExercise = {
       id,
       topic: "matrix_ops",
       difficulty: diff,
@@ -153,15 +137,9 @@ Compute the first component of $Av$.
       title: "Matrix–vector multiply",
       prompt,
       hint: "First component = row 1 of A · v",
-      correctValue: val,
-      tolerance: 0,
-    } as any;
-
-    return {
-      archetype,
-      exercise,
-      expected: { kind: "numeric", value: val, tolerance: 0 },
     };
+
+    return { archetype, exercise, expected: { kind: "numeric", value: val, tolerance: 0 } };
   }
 
   // -------------------- multiply_full (single_choice) --------------------
@@ -209,15 +187,13 @@ Compute $AB$.
     ];
 
     const shuffled = rng.shuffle(pool);
-
     const options = shuffled.map((c) => ({
       id: c.id,
       text: String.raw`$${fmt2x2Latex(c.M)}$`,
     }));
-
     const correctId = shuffled.find((c) => c.correct)!.id;
 
-    const exercise: Exercise = {
+    const exercise: SingleChoiceExercise = {
       id,
       topic: "matrix_ops",
       difficulty: diff,
@@ -225,13 +201,9 @@ Compute $AB$.
       title: "Matrix multiplication",
       prompt,
       options,
-    } as any;
-
-    return {
-      archetype,
-      exercise,
-      expected: { kind: "single_choice", optionId: correctId },
     };
+
+    return { archetype, exercise, expected: { kind: "single_choice", optionId: correctId } };
   }
 
   // -------------------- entry_AB (numeric) --------------------
@@ -251,7 +223,7 @@ $$
 Compute $(AB)_{11}$ (top-left entry).
 `.trim();
 
-  const exercise: Exercise = {
+  const exercise: NumericExercise = {
     id,
     topic: "matrix_ops",
     difficulty: diff,
@@ -259,13 +231,7 @@ Compute $(AB)_{11}$ (top-left entry).
     title: "Matrix multiplication entry",
     prompt,
     hint: "Top-left = row 1 of A · column 1 of B.",
-    correctValue: val,
-    tolerance: 0,
-  } as any;
-
-  return {
-    archetype: "entry_AB",
-    exercise,
-    expected: { kind: "numeric", value: val, tolerance: 0 },
   };
+
+  return { archetype: "entry_AB", exercise, expected: { kind: "numeric", value: val, tolerance: 0 } };
 }

@@ -11,12 +11,14 @@ import {
 
 import type {
   Exercise,
-  Topic,
   ValidateResponse,
   SubmitAnswer,
   Vec3,
   Difficulty,
+  TopicSlug,
 } from "@/lib/practice/types";
+
+import { toDbTopicSlug } from "@/lib/practice/topicSlugs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MathMarkdown from "@/components/math/MathMarkdown";
 import { useTranslations } from "next-intl";
@@ -37,10 +39,12 @@ async function readJsonSafe(res: Response) {
 
 type Phase = "practice" | "summary";
 
+type TopicValue = TopicSlug | "all";
+
 type MissedItem = {
   id: string;
   at: number;
-  topic: Topic;
+  topic: TopicSlug;
   kind: Exercise["kind"];
   title: string;
   prompt: string;
@@ -55,7 +59,7 @@ function scorePct(correct: number, attempts: number) {
 }
 
 type PendingChange =
-  | { kind: "topic"; value: Topic | "all" }
+  | { kind: "topic"; value: TopicValue }
   | { kind: "difficulty"; value: Difficulty | "all" }
   | null;
 
@@ -76,6 +80,22 @@ type QItem = {
 
 function cloneVec(v: any): Vec3 {
   return { x: Number(v?.x ?? 0), y: Number(v?.y ?? 0), z: Number(v?.z ?? 0) };
+}
+
+function isExpiredKey(k: unknown) {
+  if (typeof k !== "string") return true;
+  const dot = k.indexOf(".");
+  if (dot <= 0) return true;
+
+  const body = k.slice(0, dot);
+  try {
+    const json = JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
+    const exp = Number(json?.exp);
+    const now = Math.floor(Date.now() / 1000);
+    return !Number.isFinite(exp) || exp <= now;
+  } catch {
+    return true;
+  }
 }
 
 function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
@@ -113,6 +133,19 @@ function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
   return undefined;
 }
 
+/**
+ * Normalize anything coming from UI/URL into a DB slug.
+ * - "all" stays "all"
+ * - "dot" -> "m0.dot"
+ * - "matmul" -> "m2.matmul"
+ * - "m2.matmul" stays
+ */
+function normalizeTopicValue(v: string | null | undefined): TopicValue {
+  const raw = String(v ?? "").trim();
+  if (!raw || raw === "all") return "all";
+  return toDbTopicSlug(raw);
+}
+
 export default function PracticePage() {
   const t = useTranslations("Practice");
 
@@ -120,7 +153,8 @@ export default function PracticePage() {
   const pathname = usePathname();
   const sp = useSearchParams();
 
-  const [topic, setTopic] = useState<Topic | "all">("all");
+  // ✅ canonical DB slug in state
+  const [topic, setTopic] = useState<TopicValue>("all");
   const [difficulty, setDifficulty] = useState<Difficulty | "all">("all");
   const [section, setSection] = useState<string | null>(null);
 
@@ -130,8 +164,8 @@ export default function PracticePage() {
   const [showMissed, setShowMissed] = useState(true);
 
   const [busy, setBusy] = useState(false);
-  const [loadErr, setLoadErr] = useState<string | null>(null); // /api/practice
-  const [actionErr, setActionErr] = useState<string | null>(null); // validate/reveal
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [actionErr, setActionErr] = useState<string | null>(null);
 
   const [stack, setStack] = useState<QItem[]>([]);
   const [idx, setIdx] = useState(0);
@@ -149,8 +183,18 @@ export default function PracticePage() {
   const current = stack[idx] ?? null;
   const exercise = current?.exercise ?? null;
 
-  // ✅ session size is state (not a let)
   const [sessionSize, setSessionSize] = useState<number>(SESSION_DEFAULT);
+
+  // ✅ fix topicOptions (some may still be legacy ids)
+  const topicOptionsFixed = useMemo(() => {
+    return topicOptions.map((o) => ({
+      ...o,
+      id:
+        o.id === "all"
+          ? ("all" as const)
+          : (toDbTopicSlug(String(o.id)) as TopicSlug),
+    }));
+  }, []);
 
   const answeredCount = useMemo(
     () => stack.filter((q) => q.submitted).length,
@@ -174,7 +218,7 @@ export default function PracticePage() {
       out.push({
         id: `${q.key}-missed`,
         at: Date.now(),
-        topic: q.exercise.topic,
+        topic: String(q.exercise.topic),
         kind: q.exercise.kind,
         title: q.exercise.title,
         prompt: q.exercise.prompt,
@@ -321,17 +365,9 @@ export default function PracticePage() {
     };
   }, [confirmOpen]);
 
-  function storageKeyV3(
-    s: string | null,
-    t: Topic | "all",
-    d: Difficulty | "all"
-  ) {
-    return `practice:v3:${s ?? "no-section"}:${t}:${d}`;
-  }
-
   function storageKeyV4(
     s: string | null,
-    t: Topic | "all",
+    t: TopicValue,
     d: Difficulty | "all",
     n: number
   ) {
@@ -361,27 +397,13 @@ export default function PracticePage() {
         ? (difficultyParam as any)
         : "all";
 
-    const nextTopic: Topic | "all" =
-      topicParam === "all" ||
-      topicParam === "dot" ||
-      topicParam === "projection" ||
-      topicParam === "angle" ||
-      topicParam === "vectors" ||
-      topicParam === "vectors_part2" ||
-      topicParam === "vectors_part1"
-        ? (topicParam as any)
-        : "all";
+    const nextTopic: TopicValue = normalizeTopicValue(topicParam);
 
     const initialSize = sizeFromParam ?? SESSION_DEFAULT;
     setSessionSize(initialSize);
 
     try {
-      const k4 = storageKeyV4(
-        nextSection,
-        nextTopic,
-        nextDifficulty,
-        initialSize
-      );
+      const k4 = storageKeyV4(nextSection, nextTopic, nextDifficulty, initialSize);
       const raw4 = sessionStorage.getItem(k4);
 
       if (raw4) {
@@ -395,56 +417,29 @@ export default function PracticePage() {
           setPhase(saved.phase ?? "practice");
           setShowMissed(saved.showMissed ?? true);
 
-          setStack(Array.isArray(saved.stack) ? saved.stack : []);
+          const restoredStack = Array.isArray(saved.stack) ? saved.stack : [];
+          const cleaned = restoredStack.filter((q: any) => !isExpiredKey(q.key));
+
+          setStack(cleaned);
           setIdx(
             typeof saved.idx === "number"
               ? Math.max(
                   0,
-                  Math.min(saved.idx, (saved.stack?.length ?? 1) - 1)
+                  Math.min(saved.idx, Math.max(0, cleaned.length - 1))
                 )
               : 0
           );
+
+          if (cleaned.length === 0) {
+            setSessionId(null);
+            setPhase("practice");
+          }
 
           setSessionSize(
             typeof saved.sessionSize === "number" && saved.sessionSize > 0
               ? saved.sessionSize
               : initialSize
           );
-
-          setLoadErr(null);
-          restoredRef.current = true;
-          firstFiltersEffectRef.current = true;
-          skipUrlSyncRef.current = true;
-          setHydrated(true);
-          return;
-        }
-      }
-
-      const k3 = storageKeyV3(nextSection, nextTopic, nextDifficulty);
-      const raw3 = sessionStorage.getItem(k3);
-
-      if (raw3) {
-        const saved = JSON.parse(raw3);
-        if (saved?.v === 3) {
-          setSection(saved.section ?? nextSection);
-          setTopic(saved.topic ?? nextTopic);
-          setDifficulty(saved.difficulty ?? nextDifficulty);
-
-          setSessionId(saved.sessionId ?? null);
-          setPhase(saved.phase ?? "practice");
-          setShowMissed(saved.showMissed ?? true);
-
-          setStack(Array.isArray(saved.stack) ? saved.stack : []);
-          setIdx(
-            typeof saved.idx === "number"
-              ? Math.max(
-                  0,
-                  Math.min(saved.idx, (saved.stack?.length ?? 1) - 1)
-                )
-              : 0
-          );
-
-          setSessionSize(initialSize);
 
           setLoadErr(null);
           restoredRef.current = true;
@@ -556,11 +551,11 @@ export default function PracticePage() {
     let b: Vec3 = { x: 2, y: 1, z: 0 };
 
     if (ex.kind === "vector_drag_target") {
-      a = cloneVec(ex.initialA);
-      b = cloneVec(ex.initialB ?? { x: 2, y: 1, z: 0 });
+      a = cloneVec((ex as any).initialA);
+      b = cloneVec((ex as any).initialB ?? { x: 2, y: 1, z: 0 });
     } else if (ex.kind === "vector_drag_dot") {
-      a = cloneVec(ex.initialA);
-      b = cloneVec(ex.b ?? { x: 2, y: 1, z: 0 });
+      a = cloneVec((ex as any).initialA);
+      b = cloneVec((ex as any).b ?? { x: 2, y: 1, z: 0 });
     }
 
     return {
@@ -590,7 +585,7 @@ export default function PracticePage() {
     try {
       const qs = new URLSearchParams();
 
-      qs.set("topic", topic);
+      qs.set("topic", topic); // ✅ DB slug or "all"
       if (difficulty !== "all") qs.set("difficulty", difficulty);
 
       const sid = opts?.forceNew ? null : sessionId;
@@ -733,7 +728,8 @@ export default function PracticePage() {
       const data = (await readJsonSafe(r)) as ValidateResponse;
       if (!r.ok) {
         throw new Error(
-          (data as any)?.message || `${t("errors.failedToSubmit")} (${r.status})`
+          (data as any)?.message ||
+            `${t("errors.failedToSubmit")} (${r.status})`
         );
       }
 
@@ -856,7 +852,7 @@ export default function PracticePage() {
 
   const badge = useMemo(() => {
     if (!exercise) return "";
-    return `${exercise.topic.toUpperCase()} • ${exercise.kind.replaceAll(
+    return `${String(exercise.topic).toUpperCase()} • ${exercise.kind.replaceAll(
       "_",
       " "
     )}`;
@@ -876,17 +872,20 @@ export default function PracticePage() {
     padRef.current.a = { ...current.dragA } as any;
     padRef.current.b = { ...current.dragB } as any;
 
-    padRef.current.showProjection = current.exercise.topic === "projection";
-    padRef.current.showAngle = current.exercise.topic === "angle";
+    // These are still your “view toggles” for VectorPad overlays
+    padRef.current.showProjection = String(current.exercise.topic).includes("projection");
+    padRef.current.showAngle = String(current.exercise.topic).includes("angle");
     padRef.current.showComponents = true;
     padRef.current.showGrid = true;
   }, [current]);
 
   const allowBDrag =
-    exercise?.kind === "vector_drag_target" ? !exercise.lockB : false;
+    exercise?.kind === "vector_drag_target" ? !(exercise as any).lockB : false;
 
   const gridModeSuffix =
-    gridMode === "auto" ? t("vectorPad.gridModeAuto") : t("vectorPad.gridModeLocked");
+    gridMode === "auto"
+      ? t("vectorPad.gridModeAuto")
+      : t("vectorPad.gridModeLocked");
 
   // SUMMARY VIEW
   if (phase === "summary") {
@@ -999,7 +998,9 @@ export default function PracticePage() {
                 </button>
               </div>
 
-              <div className="mt-3 text-[11px] text-white/50">{t("confirm.esc")}</div>
+              <div className="mt-3 text-[11px] text-white/50">
+                {t("confirm.esc")}
+              </div>
             </div>
           </div>
         </div>
@@ -1020,7 +1021,9 @@ export default function PracticePage() {
                 <div className="text-sm font-black tracking-tight">
                   {t("title")}
                 </div>
-                <div className="mt-1 text-xs text-white/70">{t("subtitle")}</div>
+                <div className="mt-1 text-xs text-white/70">
+                  {t("subtitle")}
+                </div>
 
                 <div className="mt-2 text-xs text-white/60">
                   {t("progress.label")}:{" "}
@@ -1053,13 +1056,13 @@ export default function PracticePage() {
                 value={topic}
                 onChange={(e) => {
                   if (isAssignmentRun) return;
-                  const next = e.target.value as Topic | "all";
+                  const next = normalizeTopicValue(e.target.value);
                   if (next === topic) return;
                   requestChange({ kind: "topic", value: next });
                 }}
               >
-                {topicOptions.map((tt) => (
-                  <option key={tt.id} value={tt.id}>
+                {topicOptionsFixed.map((tt) => (
+                  <option key={String(tt.id)} value={String(tt.id)}>
                     {tt.label}
                   </option>
                 ))}
@@ -1135,7 +1138,9 @@ export default function PracticePage() {
                   <div className="mt-1 text-white/70">{actionErr}</div>
                 </div>
               ) : !current?.result ? (
-                <div className="text-white/70">{t("result.submitToValidate")}</div>
+                <div className="text-white/70">
+                  {t("result.submitToValidate")}
+                </div>
               ) : (
                 <>
                   <div className="font-extrabold">
@@ -1163,7 +1168,8 @@ export default function PracticePage() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden">
           <div className="border-b border-white/10 bg-black/20 p-4">
             <div className="text-sm font-black">
-              {exercise?.title ?? (busy ? t("status.loadingDots") : t("status.dash"))}
+              {exercise?.title ??
+                (busy ? t("status.loadingDots") : t("status.dash"))}
             </div>
             <div className="mt-1 text-sm text-white/80 break-words">
               <MathMarkdown
@@ -1242,10 +1248,10 @@ export default function PracticePage() {
               </div>
             ) : exercise.kind === "numeric" ? (
               <div className="grid gap-3">
-                {exercise.hint ? (
+                {(exercise as any).hint ? (
                   <MathMarkdown
                     className="prose prose-sm max-w-none"
-                    content={exercise.hint}
+                    content={(exercise as any).hint}
                   />
                 ) : null}
 
@@ -1265,9 +1271,9 @@ export default function PracticePage() {
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
                   {t("exercises.vectorDragTarget.instructions", {
-                    x: exercise.targetA.x,
-                    y: exercise.targetA.y,
-                    tolerance: exercise.tolerance,
+                    x: (exercise as any).targetA.x,
+                    y: (exercise as any).targetA.y,
+                    tolerance: (exercise as any).tolerance,
                   })}
                 </div>
 
@@ -1343,8 +1349,8 @@ export default function PracticePage() {
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
                   {t("exercises.vectorDragDot.instructions", {
-                    targetDot: exercise.targetDot,
-                    tolerance: exercise.tolerance,
+                    targetDot: (exercise as any).targetDot,
+                    tolerance: (exercise as any).tolerance,
                   })}
                   <div className="mt-1 text-white/60">
                     {t("exercises.vectorDragDot.bFixed", {
@@ -1516,7 +1522,7 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
               </div>
             </div>
             <div className="rounded-full border border-rose-300/20 bg-rose-300/10 px-2 py-1 text-[11px] font-extrabold text-white/80">
-              {m.topic.toUpperCase()} • {m.kind.replaceAll("_", " ")}
+              {String(m.topic).toUpperCase()} • {m.kind.replaceAll("_", " ")}
             </div>
           </div>
 
@@ -1702,15 +1708,6 @@ function ExpectedSummary({ result }: { result: any }) {
             {typeof exp.debug?.dot === "number"
               ? exp.debug.dot.toFixed(4)
               : "—"}
-          </div>
-        </div>
-        <div className={row + " mt-1"}>
-          <div className={label}>{t("aMag")}</div>
-          <div className={mono}>
-            {typeof exp.debug?.aMag === "number"
-              ? exp.debug.aMag.toFixed(4)
-              : "—"}{" "}
-            ({t("min")} {exp.minMag})
           </div>
         </div>
         <DetailsBlock value={exp} />

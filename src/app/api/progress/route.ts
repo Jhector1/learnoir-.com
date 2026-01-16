@@ -5,70 +5,121 @@ import { getActor } from "@/lib/practice/actor";
 
 export const runtime = "nodejs";
 
+type RangeId = "7d" | "30d" | "90d";
+type Difficulty = "easy" | "medium" | "hard";
+
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
 function daysAgo(n: number) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return startOfDay(d);
+}
+
+function parseRange(x: string | null): RangeId {
+  return x === "7d" || x === "90d" || x === "30d" ? x : "30d";
+}
+
+function parseDifficulty(x: string | null): Difficulty | "all" {
+  return x === "easy" || x === "medium" || x === "hard" ? x : "all";
+}
+
+function parseTopic(x: string | null): string | "all" {
+  if (!x || x === "all") return "all";
+  return x;
+}
+
+function buildActorWhere(actor: { userId?: string | null; guestId?: string | null }) {
+  const OR = [
+    actor.userId ? { userId: actor.userId } : undefined,
+    actor.guestId ? { guestId: actor.guestId } : undefined,
+  ].filter(Boolean) as any[];
+
+  // If somehow neither exists, force empty match
+  if (!OR.length) return { userId: "__none__" };
+
+  return { OR };
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const range = searchParams.get("range") ?? "30d";
+
+  const range = parseRange(searchParams.get("range"));
+  const topic = parseTopic(searchParams.get("topic"));
+  const difficulty = parseDifficulty(searchParams.get("difficulty"));
 
   const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
   const from = daysAgo(days);
 
   const actor = await getActor();
-  console.log("Progress for actor:", actor);
+  const whereActor = buildActorWhere(actor);
 
-  const whereActor = {
-    OR: [
-      actor.userId ? { userId: actor.userId } : undefined,
-      actor.guestId ? { guestId: actor.guestId } : undefined,
-    ].filter(Boolean) as any,
-  };
+  // ---- Instance-level filters ----
+  // topic filter uses PracticeTopic.genKey (your scalable mapping)
+  const instanceWhere: any = {};
+  if (difficulty !== "all") instanceWhere.difficulty = difficulty;
+  if (topic !== "all") instanceWhere.topic = { genKey: topic };
 
-  // Attempts within range (include instance for topic/difficulty)
+  // ---- Attempts in range (+filters) ----
   const attempts = await prisma.practiceAttempt.findMany({
     where: {
       ...whereActor,
       createdAt: { gte: from },
+      instance: instanceWhere,
     },
-    include: { instance: true },
+    include: {
+      instance: {
+        select: {
+          id: true,
+          kind: true,
+          difficulty: true,
+          title: true,
+          prompt: true,
+          secretPayload: true,
+          topic: { select: { slug: true, genKey: true } },
+        },
+      },
+    },
     orderBy: { createdAt: "asc" },
   });
 
   const totalAttempts = attempts.length;
-  const correctAttempts = attempts.filter((a) => a.ok).length;
+  const correctAttempts = attempts.reduce((s, a) => s + (a.ok ? 1 : 0), 0);
   const accuracy = totalAttempts ? correctAttempts / totalAttempts : 0;
 
-  // sessions completed
+  // ---- Sessions completed (range + difficulty filter only) ----
+  // Sessions do not have a single topic (topic is per instance),
+  // so we do NOT apply topic filter here.
   const sessionsCompleted = await prisma.practiceSession.count({
     where: {
       ...whereActor,
       status: "completed",
       completedAt: { gte: from },
+      ...(difficulty !== "all" ? { difficulty } : {}),
     },
   });
 
-  // byTopic and byDifficulty
+  // ---- Aggregations ----
   const byTopicMap = new Map<string, { attempts: number; correct: number }>();
   const byDiffMap = new Map<string, { attempts: number; correct: number }>();
   const byDayMap = new Map<string, { attempts: number; correct: number }>();
 
   for (const a of attempts) {
-    const t = a.instance.topic;
-    const d = a.instance.difficulty;
+    const topicKey = a.instance.topic.genKey ?? a.instance.topic.slug; // ✅ string
+    const diffKey = a.instance.difficulty;
 
-    byTopicMap.set(t, {
-      attempts: (byTopicMap.get(t)?.attempts ?? 0) + 1,
-      correct: (byTopicMap.get(t)?.correct ?? 0) + (a.ok ? 1 : 0),
+    byTopicMap.set(topicKey, {
+      attempts: (byTopicMap.get(topicKey)?.attempts ?? 0) + 1,
+      correct: (byTopicMap.get(topicKey)?.correct ?? 0) + (a.ok ? 1 : 0),
     });
 
-    byDiffMap.set(d, {
-      attempts: (byDiffMap.get(d)?.attempts ?? 0) + 1,
-      correct: (byDiffMap.get(d)?.correct ?? 0) + (a.ok ? 1 : 0),
+    byDiffMap.set(diffKey, {
+      attempts: (byDiffMap.get(diffKey)?.attempts ?? 0) + 1,
+      correct: (byDiffMap.get(diffKey)?.correct ?? 0) + (a.ok ? 1 : 0),
     });
 
     const day = a.createdAt.toISOString().slice(0, 10);
@@ -99,15 +150,21 @@ export async function GET(req: Request) {
     accuracy: v.attempts ? v.correct / v.attempts : 0,
   }));
 
-  // Best topic (highest accuracy among topics with enough attempts)
   const bestTopic =
     byTopic
       .filter((x) => x.attempts >= 5)
-      .sort((a, b) => b.accuracy - a.accuracy)[0]?.topic ?? (byTopic[0]?.topic ?? "dot");
+      .sort((a, b) => b.accuracy - a.accuracy)[0]?.topic ??
+    byTopic.sort((a, b) => b.attempts - a.attempts)[0]?.topic ??
+    "—";
 
-  // Recent sessions
+  // ---- Recent sessions (keep topic as section slug; UI can display it) ----
   const recentSessionsRaw = await prisma.practiceSession.findMany({
-    where: { ...whereActor, status: "completed" },
+    where: {
+      ...whereActor,
+      status: "completed",
+      ...(difficulty !== "all" ? { difficulty } : {}),
+    },
+    include: { section: { select: { slug: true } } },
     orderBy: { completedAt: "desc" },
     take: 12,
   });
@@ -115,29 +172,41 @@ export async function GET(req: Request) {
   const recentSessions = recentSessionsRaw.map((s) => ({
     id: s.id,
     createdAt: (s.completedAt ?? s.startedAt).toISOString(),
-    topic: "dot", // sessions are by section; topic is per instance, not per session. (keep UI compatible)
+    topic: s.section.slug, // ✅ better than "dot"
     difficulty: s.difficulty,
     totalCount: s.total,
     correctCount: s.correct,
     accuracy: s.total ? s.correct / s.total : 0,
   }));
 
-  // Missed attempts list
+  // ---- Missed ----
   const missedRaw = await prisma.practiceAttempt.findMany({
     where: {
       ...whereActor,
       ok: false,
       revealUsed: false,
       createdAt: { gte: from },
+      instance: instanceWhere,
     },
-    include: { instance: true },
+    include: {
+      instance: {
+        select: {
+          kind: true,
+          difficulty: true,
+          title: true,
+          prompt: true,
+          secretPayload: true,
+          topic: { select: { slug: true, genKey: true } },
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: 20,
   });
 
   const missed = missedRaw.map((a) => ({
     occurredAt: a.createdAt.toISOString(),
-    topic: a.instance.topic,
+    topic: a.instance.topic.genKey ?? a.instance.topic.slug,
     difficulty: a.instance.difficulty,
     kind: a.instance.kind,
     title: a.instance.title,
@@ -150,7 +219,7 @@ export async function GET(req: Request) {
     explanation: undefined,
   }));
 
-  // Streak days: count consecutive days (from today backwards) with >=1 attempt
+  // ---- Streak (based on attempts in range) ----
   const daysWithAttempts = new Set(attempts.map((a) => a.createdAt.toISOString().slice(0, 10)));
   let streakDays = 0;
   for (let i = 0; i < 365; i++) {
@@ -175,6 +244,6 @@ export async function GET(req: Request) {
     accuracyTimeline,
     recentSessions,
     missed,
-    meta: { range },
+    meta: { range, topic, difficulty },
   });
 }

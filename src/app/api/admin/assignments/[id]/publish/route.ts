@@ -11,6 +11,10 @@ export async function POST(req: Request, ctx: Ctx) {
   const assignment = await prisma.assignment.update({
     where: { id },
     data: { status: "published" },
+    include: {
+      topics: { orderBy: { order: "asc" }, include: { topic: true } },
+      section: { select: { id: true, slug: true, title: true } },
+    },
   });
 
   return NextResponse.json({ assignment });

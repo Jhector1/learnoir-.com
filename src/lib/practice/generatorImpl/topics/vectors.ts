@@ -1,10 +1,10 @@
 // src/lib/practice/generator/topics/vectors.ts
-import type { Difficulty, Exercise } from "../../types";
+import type { Difficulty, Exercise, ExerciseKind, VectorDragDotExercise, VectorDragTargetExercise } from "../../types";
 import type { GenOut } from "../expected";
 import { nonZeroVec, toleranceFor } from "../utils";
 import { RNG } from "../rng";
 
-export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<Exercise> {
+export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<ExerciseKind> {
   const archetype = rng.weighted([
     { value: "drag_target" as const, w: 6 },
     { value: "drag_perp" as const, w: diff === "hard" ? 5 : 2 },
@@ -14,7 +14,7 @@ export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<Exerc
     const B = nonZeroVec(rng, diff);
     const tol = toleranceFor(diff, "vector_drag_dot");
 
-    const exercise: Exercise = {
+    const exercise: VectorDragDotExercise = {
       id,
       topic: "vectors",
       difficulty: diff,
@@ -28,7 +28,7 @@ export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<Exerc
       b: B,
       targetDot: 0,
       tolerance: tol,
-    } as any;
+    };
 
     return { archetype, exercise, expected: { kind: "vector_drag_dot", targetDot: 0, tolerance: tol } };
   }
@@ -40,7 +40,7 @@ export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<Exerc
   const lockB = diff !== "hard";
   const tol = toleranceFor(diff, "vector_drag_target");
 
-  const exercise: Exercise = {
+  const exercise: VectorDragTargetExercise = {
     id,
     topic: "vectors",
     difficulty: diff,
@@ -55,7 +55,7 @@ export function genVectors(rng: RNG, diff: Difficulty, id: string): GenOut<Exerc
     targetA,
     lockB,
     tolerance: tol,
-  } as any;
+  };
 
   return { archetype, exercise, expected: { kind: "vector_drag_target", targetA, tolerance: tol, lockB } };
 }

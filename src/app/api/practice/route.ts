@@ -3,44 +3,116 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getExerciseWithExpected } from "@/lib/practice/generator";
 import { signPracticeKey } from "@/lib/practice/key";
-import { attachGuestCookie, ensureGuestId, getActor } from "@/lib/practice/actor";
-import type { Topic, Difficulty, Exercise } from "@/lib/practice/types";
 import {
-  TOPICS,
-  DIFFICULTIES,
-  asTopicOrAll,
-  asDifficultyOrAll,
-  pick,
-} from "@/lib/practice/catalog";
+  attachGuestCookie,
+  ensureGuestId,
+  getActor,
+} from "@/lib/practice/actor";
+import type { Difficulty, Exercise, GenKey, TopicSlug } from "@/lib/practice/types";
+
+import { DIFFICULTIES, pick } from "@/lib/practice/catalog";
+import { genKeyFromAnySlug, toDbTopicSlug } from "@/lib/practice/topicSlugs";
 import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
+import { TOPIC_GENERATORS } from "@/lib/practice/generatorImpl/topicRegistry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// ✅ engine-supported topics only
+const GEN_TOPICS = Object.keys(TOPIC_GENERATORS) as GenKey[];
+
 // Small helper so you never forget cookies again
-function withGuestCookie<T>(body: T, status: number, setGuestId: string | undefined) {
+function withGuestCookie<T>(
+  body: T,
+  status: number,
+  setGuestId: string | undefined
+) {
   const res = NextResponse.json(body as any, { status });
   return attachGuestCookie(res, setGuestId);
+}
+
+/**
+ * Convert ANY incoming topic query to:
+ * - canonical DB slug (TopicSlug)
+ * - generator key (GenKey | null)
+ */
+function normalizeTopicQuery(input: string | null | undefined): {
+  requestedDbSlug: TopicSlug | "all";
+  genKey: GenKey | null;
+} {
+  const raw = String(input ?? "").trim();
+  if (!raw || raw === "all") return { requestedDbSlug: "all", genKey: null };
+
+  // canonical DB-style slug
+  const dbSlug = toDbTopicSlug(raw);
+
+  // Matrices Part 1 subtopics (all share one engine)
+  const m2Part1 = new Set([
+    "m2.matrices_intro",
+    "m2.index_slice",
+    "m2.special",
+    "m2.elementwise_shift",
+    "m2.matmul",
+    "m2.matvec",
+    "m2.transpose_liveevil",
+    "m2.symmetric",
+  ]);
+
+  if (m2Part1.has(dbSlug)) {
+    return { requestedDbSlug: dbSlug, genKey: "matrices_part1" };
+  }
+
+  // general fallback: suffix/legacy mapping
+  const gk = genKeyFromAnySlug(dbSlug) ?? genKeyFromAnySlug(raw);
+  return { requestedDbSlug: dbSlug, genKey: gk };
+}
+
+/**
+ * Resolve a topic slug (TopicSlug) to the DB topic id.
+ * PracticeQuestionInstance requires topicId.
+ */
+async function resolveTopicIdOrThrow(topicSlug: string) {
+  const canonical = topicSlug;
+
+  const t = await prisma.practiceTopic.findUnique({
+    where: { slug: canonical },
+    select: { id: true, slug: true },
+  });
+
+  if (!t) {
+    throw new Error(
+      `Topic slug "${topicSlug}" not found in DB (canonical="${canonical}"). Did you seed PracticeTopic?`
+    );
+  }
+
+  return t.id;
 }
 
 async function createInstance(args: {
   sessionId: string | null;
   exercise: Exercise;
   expected: any;
-  topic: Topic;
+  topic: TopicSlug; // DB slug
   difficulty: Difficulty;
 }) {
   const { sessionId, exercise, expected, topic, difficulty } = args;
+
+  const difficultyValue = ((exercise as any).difficulty ?? difficulty) as Difficulty;
+
+  // exercise may override topic; treat it as slug too
+  const rawTopicSlug = String((exercise as any).topic ?? topic);
+  const dbTopicSlug = toDbTopicSlug(rawTopicSlug);
+  const topicId = await resolveTopicIdOrThrow(dbTopicSlug);
 
   return prisma.practiceQuestionInstance.create({
     data: {
       sessionId,
       kind: (exercise as any).kind,
-      topic: (exercise as any).topic ?? topic,
-      difficulty: (exercise as any).difficulty ?? difficulty,
+      topicId,
+      difficulty: difficultyValue,
       title: String((exercise as any).title ?? "Practice"),
       prompt: String((exercise as any).prompt ?? ""),
-      publicPayload: exercise as any,
+      publicPayload: { ...(exercise as any), topic: dbTopicSlug },
       secretPayload: {
         expected,
         tolerance: (exercise as any).tolerance ?? null,
@@ -81,12 +153,20 @@ function assertOwnsSessionOrThrow(args: {
   const { sessionUserId, sessionGuestId, actorUserId, actorGuestId } = args;
 
   if (!sessionUserId && !sessionGuestId) {
-    return { ok: false as const, status: 500, body: { message: "Session has no owner.", code: "SESSION_UNOWNED" } };
+    return {
+      ok: false as const,
+      status: 500,
+      body: { message: "Session has no owner.", code: "SESSION_UNOWNED" },
+    };
   }
 
   if (sessionUserId) {
     if (!actorUserId || sessionUserId !== actorUserId) {
-      return { ok: false as const, status: 403, body: { message: "Forbidden." } };
+      return {
+        ok: false as const,
+        status: 403,
+        body: { message: "Forbidden." },
+      };
     }
     return { ok: true as const };
   }
@@ -99,14 +179,15 @@ function assertOwnsSessionOrThrow(args: {
 }
 
 export async function GET(req: Request) {
+  // ✅ actor + guest cookie must be available in BOTH session + stateless mode
+  const actor0 = await getActor();
+  const ensured = ensureGuestId(actor0);
+  const actor = ensured.actor;
+  const setGuestId = ensured.setGuestId;
+
   try {
     const { searchParams } = new URL(req.url);
     const sessionIdParam = searchParams.get("sessionId");
-
-    const actor0 = await getActor();
-    const ensured = ensureGuestId(actor0);
-    const actor = ensured.actor;
-    const setGuestId = ensured.setGuestId;
 
     // ----------------------------
     // Session mode
@@ -125,7 +206,7 @@ export async function GET(req: Request) {
             select: {
               id: true,
               status: true,
-              topics: true,
+              topics: { select: { topic: { select: { slug: true } } } },
               difficulty: true,
               questionCount: true,
               availableFrom: true,
@@ -139,10 +220,13 @@ export async function GET(req: Request) {
         return withGuestCookie({ message: "Session not found." }, 404, setGuestId);
       }
       if (session.status !== "active") {
-        return withGuestCookie({ message: "Session is not active." }, 400, setGuestId);
+        return withGuestCookie(
+          { message: "Session is not active." },
+          400,
+          setGuestId
+        );
       }
 
-      // ✅ strict ownership check (fixes “everyone shares same session”)
       const owns = assertOwnsSessionOrThrow({
         sessionUserId: session.userId ?? null,
         sessionGuestId: session.guestId ?? null,
@@ -155,27 +239,31 @@ export async function GET(req: Request) {
 
       const now = new Date();
 
-      let topic: Topic;
+      let topicSlug: TopicSlug;
+      let genTopic: GenKey;
       let difficulty: Difficulty;
 
       // ----------------------------
       // Assignment session rules
       // ----------------------------
       if (session.assignmentId) {
-        // ✅ assignments require subscription, so confirm entitlement
         const gate = await requireEntitledUser();
         if (!gate.ok) return attachGuestCookie(gate.res, setGuestId);
 
-        // ✅ assignment sessions MUST be owned by this entitled user
         if (!session.userId || session.userId !== gate.userId) {
           return withGuestCookie({ message: "Forbidden." }, 403, setGuestId);
         }
 
         const a = session.assignment;
-        if (!a) return withGuestCookie({ message: "Assignment not found." }, 404, setGuestId);
+        if (!a)
+          return withGuestCookie({ message: "Assignment not found." }, 404, setGuestId);
 
         if (a.status !== "published") {
-          return withGuestCookie({ message: "Assignment not available." }, 400, setGuestId);
+          return withGuestCookie(
+            { message: "Assignment not available." },
+            400,
+            setGuestId
+          );
         }
         if (a.availableFrom && now < a.availableFrom) {
           return withGuestCookie({ message: "Not available yet." }, 400, setGuestId);
@@ -184,38 +272,72 @@ export async function GET(req: Request) {
           return withGuestCookie({ message: "Assignment is past due." }, 400, setGuestId);
         }
 
-        const allowedTopics = Array.from(a.topics ?? []) as Topic[];
-        topic = allowedTopics.length ? pick(allowedTopics) : pick(TOPICS);
+        const allowedSlugs = (a.topics ?? [])
+          .map((x) => x.topic?.slug)
+          .filter(Boolean)
+          .map((s) => toDbTopicSlug(String(s))) as TopicSlug[];
+
+        const allowedGen = allowedSlugs
+          .map((s) => normalizeTopicQuery(s).genKey)
+          .filter(Boolean) as GenKey[];
+
+        genTopic = allowedGen.length ? pick(allowedGen) : pick(GEN_TOPICS);
+
+        // store a *reasonable* slug (DB) for instance creation
+        topicSlug =
+          allowedSlugs.length
+            ? pick(allowedSlugs)
+            : toDbTopicSlug(String(genTopic));
 
         difficulty = (a.difficulty as Difficulty) ?? pick(DIFFICULTIES);
       } else {
         // ----------------------------
         // Normal session rules
         // ----------------------------
-        const topicOrAll = asTopicOrAll(searchParams.get("topic"));
-        const difficultyOrAll = asDifficultyOrAll(searchParams.get("difficulty"));
+        const rawTopic = searchParams.get("topic");
+        const rawDifficulty = searchParams.get("difficulty");
 
-        topic = topicOrAll === "all" ? pick(TOPICS) : topicOrAll;
-        difficulty = difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
+        const { requestedDbSlug, genKey } = normalizeTopicQuery(rawTopic);
+
+        genTopic =
+          requestedDbSlug === "all"
+            ? pick(GEN_TOPICS)
+            : genKey ?? pick(GEN_TOPICS);
+
+        topicSlug =
+          requestedDbSlug === "all"
+            ? toDbTopicSlug(String(genTopic))
+            : requestedDbSlug;
+
+        difficulty =
+          rawDifficulty === "easy" || rawDifficulty === "medium" || rawDifficulty === "hard"
+            ? (rawDifficulty as Difficulty)
+            : pick(DIFFICULTIES);
       }
 
-      const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
+      const { exercise, expected } = await getExerciseWithExpected(genTopic, difficulty);
 
       if (!exercise || typeof (exercise as any).kind !== "string") {
-        return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
+        return withGuestCookie(
+          { message: "Generator returned invalid exercise." },
+          500,
+          setGuestId
+        );
       }
 
       const instance = await createInstance({
         sessionId: session.id,
         exercise: exercise as Exercise,
         expected,
-        topic,
+        topic: topicSlug,
         difficulty,
       });
 
-      // optional: track last instance (don’t block response if this fails)
       prisma.practiceSession
-        .update({ where: { id: session.id }, data: { lastInstanceId: instance.id } })
+        .update({
+          where: { id: session.id },
+          data: { lastInstanceId: instance.id },
+        })
         .catch(() => {});
 
       const key = signKey({
@@ -233,6 +355,8 @@ export async function GET(req: Request) {
           meta: {
             mode: session.assignmentId ? "assignment" : "session",
             targetCount: session.targetCount,
+            requestedTopic: topicSlug,
+            generatorTopic: genTopic,
           },
         },
         200,
@@ -243,23 +367,37 @@ export async function GET(req: Request) {
     // ----------------------------
     // Stateless mode
     // ----------------------------
-    const topicOrAll = asTopicOrAll(searchParams.get("topic"));
-    const difficultyOrAll = asDifficultyOrAll(searchParams.get("difficulty"));
+    const rawTopic = searchParams.get("topic");
+    const rawDifficulty = searchParams.get("difficulty");
 
-    const topic: Topic = topicOrAll === "all" ? pick(TOPICS) : topicOrAll;
-    const difficulty: Difficulty = difficultyOrAll === "all" ? pick(DIFFICULTIES) : difficultyOrAll;
+    const { requestedDbSlug, genKey } = normalizeTopicQuery(rawTopic);
 
-    const { exercise, expected } = await getExerciseWithExpected(topic, difficulty);
+    const genTopic: GenKey =
+      requestedDbSlug === "all" ? pick(GEN_TOPICS) : genKey ?? pick(GEN_TOPICS);
+
+    const topicSlug: TopicSlug =
+      requestedDbSlug === "all" ? toDbTopicSlug(String(genTopic)) : requestedDbSlug;
+
+    const difficulty: Difficulty =
+      rawDifficulty === "easy" || rawDifficulty === "medium" || rawDifficulty === "hard"
+        ? (rawDifficulty as Difficulty)
+        : pick(DIFFICULTIES);
+
+    const { exercise, expected } = await getExerciseWithExpected(genTopic, difficulty);
 
     if (!exercise || typeof (exercise as any).kind !== "string") {
-      return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
+      return withGuestCookie(
+        { message: "Generator returned invalid exercise." },
+        500,
+        setGuestId
+      );
     }
 
     const instance = await createInstance({
       sessionId: null,
       exercise: exercise as Exercise,
       expected,
-      topic,
+      topic: topicSlug,
       difficulty,
     });
 
@@ -270,12 +408,24 @@ export async function GET(req: Request) {
       guestId: actor.guestId ?? null,
     });
 
-    return withGuestCookie({ exercise: exercise as Exercise, key }, 200, setGuestId);
+    return withGuestCookie(
+      {
+        exercise: exercise as Exercise,
+        key,
+        meta: { requestedTopic: topicSlug, generatorTopic: genTopic },
+      },
+      200,
+      setGuestId
+    );
   } catch (err: any) {
     console.error("[/api/practice] error:", err);
-    return NextResponse.json(
-      { message: "Practice API failed", explanation: err?.message ?? String(err) },
-      { status: 500 }
+    return withGuestCookie(
+      {
+        message: "Practice API failed",
+        explanation: err?.message ?? String(err),
+      },
+      500,
+      setGuestId
     );
   }
 }
