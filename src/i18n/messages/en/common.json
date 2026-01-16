@@ -1,9 +1,8 @@
 {
   "Header": {
-        "language": "Language"
-,
+    "language": "Language",
     "home": "Home",
-    "practice": "Practice",
+    "practice": "Learn & Practice",
     "assignments": "Assignments",
     "tagline": "Visual math • Practice • Progress",
     "startSession": "Start session",

@@ -1,0 +1,1 @@
+prisma migrate reset --force&&prisma migrate deploy && prisma generate&&
