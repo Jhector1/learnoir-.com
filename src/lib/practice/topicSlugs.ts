@@ -40,7 +40,6 @@ export function genKeyFromAnySlug(s: string): GenKey | null {
   if (!raw) return null;
 
   const maybe = (raw.includes(".") ? raw.split(".").pop() : raw) as GenKey;
-  console.log("genKeyFromAnySlug:", s, "->", maybe);
   return (maybe in GENKEY_TO_DB ? maybe : null);
 }
 

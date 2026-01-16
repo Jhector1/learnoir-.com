@@ -418,7 +418,6 @@ export async function GET(req: Request) {
       setGuestId
     );
   } catch (err: any) {
-    console.error("[/api/practice] error:", err);
     return withGuestCookie(
       {
         message: "Practice API failed",

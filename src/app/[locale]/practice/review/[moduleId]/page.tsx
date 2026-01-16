@@ -24,7 +24,6 @@ export default function ReviewModulePage() {
   const moduleId = params?.moduleId ?? "";
 
   const mod = useMemo(() => MODULES[moduleId], [moduleId]);
-  console.log("Loaded review module:", mod);
 
   if (!mod) {
     const known = Object.keys(MODULES);

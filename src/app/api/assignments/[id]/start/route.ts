@@ -15,7 +15,6 @@ export async function POST(
   const ensured = ensureGuestId(actor0);
   const actor = ensured.actor;
   const setGuestId = ensured.setGuestId ?? null;
-  // console.log("actor:", actor, actor0, ensured);
   // ✅ hard-block if not subscribed
   const gate = await requireEntitledUser();
    if (!gate.ok) {
@@ -37,7 +36,6 @@ export async function POST(
       maxAttempts: true,
     },
   });
-  console.log("assignment:", assignment);
 
   if (!assignment || assignment.status !== "published") {
     const res = NextResponse.json({ message: "Assignment not available." }, { status: 404 });

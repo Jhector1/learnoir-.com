@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import VectorPad from "@/components/vectorpad/VectorPad";
 import type { VectorPadState } from "@/components/vectorpad/types";
 import type { Vec3 } from "@/lib/math/vec3";
+import MathMarkdown from "@/components/math/MathMarkdown";
 
 type Vec2 = { x: number; y: number };
 type Mat2 = [[number, number], [number, number]];
@@ -190,51 +191,78 @@ export default function Transform2DSketch({
 
   return (
     <div className="h-full w-full p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="text-xs font-extrabold text-white/70">M</div>
+     <div className="mb-3 flex flex-wrap items-center gap-3">
+  {/* M = in the same KaTeX style as your modules */}
+  <MathMarkdown
+    inline
+    className="text-white/80 text-xs font-extrabold"
+    content={String.raw`$\mathbf{M}=$`}
+  />
 
-        {([0, 1] as const).map((r) =>
-          ([0, 1] as const).map((c) => (
-            <input
-              key={`${r}-${c}`}
-              type="number"
-              step={0.5}
-              value={M[r][c]}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                const next: Mat2 = [
-                  [M[0][0], M[0][1]],
-                  [M[1][0], M[1][1]],
-                ];
-                next[r][c] = val;
-                setM(next);
-              }}
-              className="w-20 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs font-extrabold text-white/90 outline-none"
-            />
-          ))
-        )}
+  <div className="flex items-center">
+    {/* Left bracket only (real KaTeX bracket, sized to 2 rows) */}
+    <MathMarkdown
+      inline
+      className="text-white/90"
+      content={String.raw`$\left[\vphantom{\begin{matrix}0\\0\end{matrix}}\right.$`}
+    />
 
-        <button
-          onClick={() => setM([[1, 0], [0, 1]])}
-          className="ml-auto rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
-        >
-          Identity
-        </button>
+    {/* Editable 2x2 entries */}
+    <div className="mx-2 grid grid-cols-2 gap-x-3 gap-y-2">
+      {([0, 1] as const).map((r) =>
+        ([0, 1] as const).map((c) => (
+          <input
+            key={`${r}-${c}`}
+            type="number"
+            step={0.5}
+            value={M[r][c]}
+            onChange={(e) => {
+              const val = Number(e.target.value);
+              const next: Mat2 = [[...M[0]], [...M[1]]];
+              next[r][c] = val;
+              setM(next);
+            }}
+            className="
+              w-16 rounded-md border border-white/10 bg-white/5
+              px-2 py-1 text-center text-xs font-mono font-extrabold text-white/90
+              outline-none focus:border-emerald-400/60
+            "
+          />
+        ))
+      )}
+    </div>
 
-        <button
-          onClick={() => setM([[0, -1], [1, 0]])}
-          className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
-        >
-          Rotate 90°
-        </button>
+    {/* Right bracket only */}
+    <MathMarkdown
+      inline
+      className="text-white/90"
+      content={String.raw`$\left.\vphantom{\begin{matrix}0\\0\end{matrix}}\right]$`}
+    />
+  </div>
 
-        <button
-          onClick={() => setM([[1, 1], [0, 1]])}
-          className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
-        >
-          Shear
-        </button>
-      </div>
+  {/* Presets */}
+  <button
+    onClick={() => setM([[1, 0], [0, 1]])}
+    className="ml-auto rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+  >
+    Identity
+  </button>
+
+  <button
+    onClick={() => setM([[0, -1], [1, 0]])}
+    className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+  >
+    Rotate 90°
+  </button>
+
+  <button
+    onClick={() => setM([[1, 1], [0, 1]])}
+    className="rounded-xl border border-white/10 bg-white/[0.06] px-3 py-1 text-xs text-white/80 hover:bg-white/[0.1]"
+  >
+    Shear
+  </button>
+</div>
+
 
       <div
         className={`w-full overflow-hidden rounded-xl border border-white/10 bg-black/20 ${heightClass}`}

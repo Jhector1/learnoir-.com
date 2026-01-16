@@ -37,7 +37,8 @@ export type ExerciseKind =
   | "multi_choice"
   | "numeric"
   | "vector_drag_target"
-  | "vector_drag_dot";
+  | "vector_drag_dot"
+    | "matrix_input"; // ✅ NEW;
 
 export type Vec3 = { x: number; y: number; z?: number };
 
@@ -54,6 +55,21 @@ export type SingleChoiceExercise = ExerciseBase & {
   options: { id: string; text: string }[];
   hint?: string;
 };
+export type MatrixInputExercise = ExerciseBase & {
+  kind: "matrix_input";
+  rows: number;
+  cols: number;
+  tolerance: number; // per-entry tolerance
+  hint?: string;
+  /**
+   * Optional display / UX flags:
+   * - step: for input stepping
+   * - integerOnly: enforce integer parsing on submit
+   */
+  step?: number;
+  integerOnly?: boolean;
+};
+
 
 export type MultiChoiceExercise = ExerciseBase & {
   kind: "multi_choice";
@@ -93,14 +109,16 @@ export type Exercise =
   | MultiChoiceExercise
   | NumericExercise
   | VectorDragTargetExercise
-  | VectorDragDotExercise;
+  | VectorDragDotExercise
+  | MatrixInputExercise; // ✅ include
 
 export type SubmitAnswer =
   | { kind: "single_choice"; optionId: string }
   | { kind: "multi_choice"; optionIds: string[] }
   | { kind: "numeric"; value: number }
   | { kind: "vector_drag_target"; a: Vec3; b: Vec3 }
-  | { kind: "vector_drag_dot"; a: Vec3 };
+  | { kind: "vector_drag_dot"; a: Vec3 }
+  | { kind: "matrix_input"; values: number[][] }; // ✅ NEW
 
 export type ValidateResponse = {
   ok: boolean;

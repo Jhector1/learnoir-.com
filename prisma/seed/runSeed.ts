@@ -127,7 +127,6 @@ async function upsertModules(tx: PrismaClient) {
 async function upsertTopics(tx: PrismaClient, moduleIdBySlug: Map<string, string>) {
   const topicSlugs = new Set<string>();
   for (const s of SECTIONS) for (const t of s.topics) topicSlugs.add(t);
-  console.log("Upserting topics:", topicSlugs);
 
   const topicIdBySlug = new Map<string, string>();
 

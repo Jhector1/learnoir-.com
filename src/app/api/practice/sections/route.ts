@@ -23,7 +23,6 @@ export async function GET() {
 
     return NextResponse.json({ sections }, { status: 200 });
   } catch (err: any) {
-    console.error("GET /api/practice/sections failed:", err);
     return NextResponse.json(
       {
         sections: [],

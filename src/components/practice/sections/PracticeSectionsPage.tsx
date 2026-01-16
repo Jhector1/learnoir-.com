@@ -75,7 +75,6 @@ export default function PracticeSectionsPage() {
         const data = JSON.parse(raw);
         if (!cancelled) setSections((data.sections ?? []) as Section[]);
       } catch (e) {
-        console.error(e);
         if (!cancelled) setSections([]);
       } finally {
         if (!cancelled) setBusy(false);

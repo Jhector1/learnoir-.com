@@ -5,6 +5,8 @@ import type {
   ExerciseKind,
   NumericExercise,
   SingleChoiceExercise,
+  // ✅ add this to your types.ts exports
+  MatrixInputExercise,
 } from "../../types";
 import type { GenOut } from "../expected";
 import type { RNG } from "../rng";
@@ -18,6 +20,11 @@ function pickShape(rng: RNG, min = 2, max = 6) {
   const m = rng.int(min, max);
   const n = rng.int(min, max);
   return { m, n };
+}
+
+function fmtMat(A: number[][]) {
+  const rows = A.map((row) => row.join(" & ")).join(String.raw`\\ `);
+  return String.raw`\begin{bmatrix}${rows}\end{bmatrix}`;
 }
 
 function fmtMat2(A: number[][]) {
@@ -41,6 +48,33 @@ function randIntNonZero(rng: RNG, lo: number, hi: number) {
   let v = 0;
   while (v === 0) v = rng.int(lo, hi);
   return v;
+}
+
+function randMat(rng: RNG, m: number, n: number, range: number) {
+  return Array.from({ length: m }, () =>
+    Array.from({ length: n }, () => rng.int(-range, range))
+  );
+}
+
+function matmul(A: number[][], B: number[][]) {
+  const m = A.length;
+  const n = A[0]?.length ?? 0;
+  const n2 = B.length;
+  const k = B[0]?.length ?? 0;
+
+  if (n === 0 || n2 === 0 || n !== n2) {
+    throw new Error("matmul shape mismatch");
+  }
+
+  const C = Array.from({ length: m }, () => Array.from({ length: k }, () => 0));
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j < k; j++) {
+      let s = 0;
+      for (let t = 0; t < n; t++) s += A[i][t] * B[t][j];
+      C[i][j] = s;
+    }
+  }
+  return C;
 }
 
 // ---------------- main factory ----------------
@@ -83,6 +117,9 @@ export function makeGenMatricesPart1(topicSlug: string) {
             { value: "matmul_shape" as const, w: 5 },
             { value: "matmul_entry_dot" as const, w: 5 },
             { value: "valid_or_invalid" as const, w: 3 },
+
+            // ✅ NEW: full matrix input (dynamic)
+            { value: "matmul_full_matrix" as const, w: 4 },
           ]);
 
         case "m2.matvec":
@@ -97,6 +134,9 @@ export function makeGenMatricesPart1(topicSlug: string) {
             { value: "transpose_product_rule" as const, w: 6 },
             { value: "transpose_shape" as const, w: 3 },
             { value: "double_transpose" as const, w: 1 },
+
+            // ✅ NEW: fill full transpose (dynamic)
+            { value: "transpose_fill_matrix" as const, w: 3 },
           ]);
 
         case "m2.symmetric":
@@ -589,6 +629,59 @@ $$
       return { archetype, exercise, expected: { kind: "numeric", value: correct, tolerance: 0 } };
     }
 
+    // ✅ NEW: full AB with matrix_input (dynamic m×n times n×k)
+    if (archetype === "matmul_full_matrix") {
+      // keep it solvable: cap sizes by difficulty
+      const maxDim = diff === "easy" ? 3 : diff === "medium" ? 4 : 5;
+
+      const m = rng.int(2, maxDim);
+      const n = rng.int(2, maxDim);
+      const k = rng.int(2, maxDim);
+
+      const A = randMat(rng, m, n, range);
+      const B = randMat(rng, n, k, range);
+      const C = matmul(A, B);
+
+      const prompt = String.raw`
+Let
+$$
+\mathbf{A}\in\mathbb{R}^{${shapeLatex(m, n)}},\quad
+\mathbf{B}\in\mathbb{R}^{${shapeLatex(n, k)}}.
+$$
+
+$$
+\mathbf{A}=${fmtMat(A)},\qquad
+\mathbf{B}=${fmtMat(B)}.
+$$
+
+Compute the full product:
+$$
+\mathbf{C}=\mathbf{A}\mathbf{B}.
+$$
+`.trim();
+
+      const exercise: MatrixInputExercise = {
+        id,
+        topic: topicSlug,
+        difficulty: diff,
+        kind: "matrix_input",
+        title: "Compute A·B (full matrix)",
+        prompt,
+        rows: m,
+        cols: k,
+        tolerance: 0,
+        integerOnly: true,
+        step: 1,
+        hint: "Each entry cᵢⱼ is (row i of A) · (col j of B).",
+      };
+
+      return {
+        archetype,
+        exercise,
+        expected: { kind: "matrix_input", values: C, tolerance: 0 },
+      };
+    }
+
     // ------------------------------------------------------------
     // m2.matvec
     // ------------------------------------------------------------
@@ -783,6 +876,52 @@ $$
       };
 
       return { archetype, exercise, expected: { kind: "single_choice", optionId: "true" } };
+    }
+
+    // ✅ NEW: enter full A^T (dynamic)
+    if (archetype === "transpose_fill_matrix") {
+      const maxDim = diff === "easy" ? 4 : diff === "medium" ? 5 : 6;
+      const m = rng.int(2, maxDim);
+      const n = rng.int(2, maxDim);
+
+      const A = randMat(rng, m, n, range);
+      const AT = Array.from({ length: n }, (_, r) =>
+        Array.from({ length: m }, (_, c) => A[c][r])
+      );
+
+      const prompt = String.raw`
+Let
+$$
+\mathbf{A}\in\mathbb{R}^{${shapeLatex(m, n)}},\qquad
+\mathbf{A}=${fmtMat(A)}.
+$$
+
+Compute the transpose:
+$$
+\mathbf{A}^T.
+$$
+`.trim();
+
+      const exercise: MatrixInputExercise = {
+        id,
+        topic: topicSlug,
+        difficulty: diff,
+        kind: "matrix_input",
+        title: "Compute Aᵀ (full matrix)",
+        prompt,
+        rows: n,
+        cols: m,
+        tolerance: 0,
+        integerOnly: true,
+        step: 1,
+        hint: "Transpose swaps rows and columns: (Aᵀ)ᵢⱼ = Aⱼᵢ.",
+      };
+
+      return {
+        archetype,
+        exercise,
+        expected: { kind: "matrix_input", values: AT, tolerance: 0 },
+      };
     }
 
     // ------------------------------------------------------------

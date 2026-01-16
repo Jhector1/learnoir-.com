@@ -5,6 +5,7 @@ import type {
   ExerciseKind,
   NumericExercise,
   SingleChoiceExercise,
+  MatrixInputExercise,
 } from "../../types";
 import type { GenOut } from "../expected";
 import type { RNG } from "../rng";
@@ -24,6 +25,20 @@ function fmtVecN(v: number[]) {
 }
 function fmtShape(r: number, c?: number) {
   return c === undefined ? `(${r},)` : `(${r}, ${c})`;
+}
+
+// ---------------- matrix-input helpers ----------------
+function vecToColMatrix(v: number[]) {
+  return v.map((x) => [x]); // n×1
+}
+function addVec(a: number[], b: number[]) {
+  return a.map((x, i) => x + b[i]);
+}
+function subVec(a: number[], b: number[]) {
+  return a.map((x, i) => x - b[i]);
+}
+function mulScalar(s: number, v: number[]) {
+  return v.map((x) => s * x);
 }
 
 // ---------------- math helpers ----------------
@@ -83,9 +98,160 @@ export function genVectorsPart1(
     { value: "hadamard_bug" as const, w: 3 },
     { value: "outer_product_entry" as const, w: diff === "hard" ? 4 : 2 },
     { value: "orth_proj_beta" as const, w: diff === "hard" ? 4 : 2 },
+
+    // ✅ NEW: vector input (as n×1 matrix_input)
+    { value: "vector_input_add" as const, w: diff === "easy" ? 3 : 4 },
+    { value: "vector_input_sub" as const, w: diff === "easy" ? 2 : 3 },
+    { value: "vector_input_scalar_mult" as const, w: diff === "easy" ? 3 : 4 },
   ]);
 
   const TOPIC = "vectors" as const;
+
+  // ------------------------------------------------------------
+  // ✅ NEW) Vector input: a + b (enter as column vector)
+  // ------------------------------------------------------------
+  if (archetype === "vector_input_add") {
+    const n = pickLen(rng, diff);
+    const a = vecInts(rng, n, range, false);
+    const b = vecInts(rng, n, range, false);
+    const out = addVec(a, b);
+
+    const prompt = String.raw`
+Let
+
+$$
+a=${fmtVecN(a)},\qquad b=${fmtVecN(b)}.
+$$
+
+Compute
+
+$$
+a+b
+$$
+
+and enter your answer as a **column vector** (shape $${n}\times 1$).
+`.trim();
+
+    const exercise: MatrixInputExercise = {
+      id,
+      topic: TOPIC,
+      difficulty: diff,
+      kind: "matrix_input",
+      title: "Vector input: a + b",
+      prompt,
+      rows: n,
+      cols: 1,
+      tolerance: 0,
+      integerOnly: true,
+      step: 1,
+      hint: "Add component-wise. Enter as an n×1 column vector.",
+    };
+
+    return {
+      archetype,
+      exercise,
+      expected: { kind: "matrix_input", values: vecToColMatrix(out), tolerance: 0 },
+    };
+  }
+
+  // ------------------------------------------------------------
+  // ✅ NEW) Vector input: a - b (enter as column vector)
+  // ------------------------------------------------------------
+  if (archetype === "vector_input_sub") {
+    const n = pickLen(rng, diff);
+    const a = vecInts(rng, n, range, false);
+    const b = vecInts(rng, n, range, false);
+    const out = subVec(a, b);
+
+    const prompt = String.raw`
+Let
+
+$$
+a=${fmtVecN(a)},\qquad b=${fmtVecN(b)}.
+$$
+
+Compute
+
+$$
+a-b
+$$
+
+and enter your answer as a **column vector** (shape $${n}\times1$$).
+`.trim();
+
+    const exercise: MatrixInputExercise = {
+      id,
+      topic: TOPIC,
+      difficulty: diff,
+      kind: "matrix_input",
+      title: "Vector input: a − b",
+      prompt,
+      rows: n,
+      cols: 1,
+      tolerance: 0,
+      integerOnly: true,
+      step: 1,
+      hint: "Subtract component-wise. Enter as an n×1 column vector.",
+    };
+
+    return {
+      archetype,
+      exercise,
+      expected: { kind: "matrix_input", values: vecToColMatrix(out), tolerance: 0 },
+    };
+  }
+
+  // ------------------------------------------------------------
+  // ✅ NEW) Vector input: γv (enter as column vector)
+  // ------------------------------------------------------------
+  if (archetype === "vector_input_scalar_mult") {
+    const n = pickLen(rng, diff);
+    const v = vecInts(rng, n, range, false);
+
+    const gamma =
+      diff === "easy"
+        ? rng.pick([-3, -2, -1, 2, 3] as const)
+        : rng.pick([-4, -3, -2, -1, 2, 3, 4] as const);
+
+    const out = mulScalar(gamma, v);
+
+    const prompt = String.raw`
+Let
+
+$$
+v=${fmtVecN(v)}.
+$$
+
+Compute the scalar multiple
+
+$$
+${gamma}\,v
+$$
+
+and enter your answer as a **column vector** (shape $${n}\times1$$).
+`.trim();
+
+    const exercise: MatrixInputExercise = {
+      id,
+      topic: TOPIC,
+      difficulty: diff,
+      kind: "matrix_input",
+      title: "Vector input: scalar multiple",
+      prompt,
+      rows: n,
+      cols: 1,
+      tolerance: 0,
+      integerOnly: true,
+      step: 1,
+      hint: "Multiply every component by the scalar. Enter as an n×1 column vector.",
+    };
+
+    return {
+      archetype,
+      exercise,
+      expected: { kind: "matrix_input", values: vecToColMatrix(out), tolerance: 0 },
+    };
+  }
 
   // ------------------------------------------------------------
   // 1) Dimensionality + orientation (math)
@@ -190,8 +356,6 @@ Which statement is correct?
   if (archetype === "numpy_shapes") {
     const n = 3;
 
-    // ✅ keep Python in fenced code, never inside $$ ... $$
-    // ✅ refer to variable names with inline code `...`
     const prompt = String.raw`
 In Python/NumPy, consider:
 
@@ -506,8 +670,7 @@ $$
 Classify the angle $$\theta$$ between $$a$$ and $$b$$ as **acute**, **right**, or **obtuse**.
 `.trim();
 
-    const correct =
-      kind === "zero" ? "right" : kind === "positive" ? "acute" : "obtuse";
+    const correct = kind === "zero" ? "right" : kind === "positive" ? "acute" : "obtuse";
 
     const exercise: SingleChoiceExercise = {
       id,
@@ -671,5 +834,9 @@ $$
     prompt: "Fallback exercise.",
     options: [{ id: "ok", text: "OK" }],
   };
-  return { archetype: "fallback", exercise: fallback, expected: { kind: "single_choice", optionId: "ok" } };
+  return {
+    archetype: "fallback",
+    exercise: fallback,
+    expected: { kind: "single_choice", optionId: "ok" },
+  };
 }

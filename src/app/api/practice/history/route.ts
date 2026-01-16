@@ -31,7 +31,6 @@ export async function GET(req: Request) {
     orderBy: { startedAt: "desc" },
     take: Math.min(200, Math.max(1, take)),
   });
-  console.log(`Found ${sessions.length} sessions for actor.`, sessions, actor);
 
   return NextResponse.json({
     sessions: sessions.map((s) => ({

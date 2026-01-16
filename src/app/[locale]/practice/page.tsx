@@ -22,6 +22,7 @@ import { toDbTopicSlug } from "@/lib/practice/topicSlugs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MathMarkdown from "@/components/math/MathMarkdown";
 import { useTranslations } from "next-intl";
+import MatrixEntryInput from "@/components/practice/MatrixEntryInput";
 
 const SESSION_DEFAULT = 10;
 
@@ -76,6 +77,7 @@ type QItem = {
   result: ValidateResponse | null;
   submitted: boolean;
   revealed?: boolean;
+  mat: string[][]; // ✅ NEW
 };
 
 function cloneVec(v: any): Vec3 {
@@ -128,6 +130,29 @@ function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
 
   if (ex.kind === "vector_drag_dot") {
     return { kind: "vector_drag_dot", a: { ...item.dragA } };
+  }
+  if (ex.kind === "matrix_input") {
+    const rows = ex.rows;
+    const cols = ex.cols;
+
+    if (!item.mat || item.mat.length !== rows || item.mat[0]?.length !== cols)
+      return undefined;
+
+    const values: number[][] = [];
+    for (let r = 0; r < rows; r++) {
+      const row: number[] = [];
+      for (let c = 0; c < cols; c++) {
+        const raw = String(item.mat[r][c] ?? "").trim();
+        if (!raw) return undefined;
+
+        const v = Number(raw);
+        if (!Number.isFinite(v)) return undefined;
+
+        row.push(ex.integerOnly ? Math.trunc(v) : v);
+      }
+      values.push(row);
+    }
+    return { kind: "matrix_input", values };
   }
 
   return undefined;
@@ -383,7 +408,9 @@ export default function PracticePage() {
     const topicParam = sp.get("topic");
 
     const questionCountParam = sp.get("questionCount");
-    const qcParsed = questionCountParam ? parseInt(questionCountParam, 10) : NaN;
+    const qcParsed = questionCountParam
+      ? parseInt(questionCountParam, 10)
+      : NaN;
     const sizeFromParam =
       Number.isFinite(qcParsed) && qcParsed > 0 ? qcParsed : null;
 
@@ -403,7 +430,12 @@ export default function PracticePage() {
     setSessionSize(initialSize);
 
     try {
-      const k4 = storageKeyV4(nextSection, nextTopic, nextDifficulty, initialSize);
+      const k4 = storageKeyV4(
+        nextSection,
+        nextTopic,
+        nextDifficulty,
+        initialSize
+      );
       const raw4 = sessionStorage.getItem(k4);
 
       if (raw4) {
@@ -418,7 +450,9 @@ export default function PracticePage() {
           setShowMissed(saved.showMissed ?? true);
 
           const restoredStack = Array.isArray(saved.stack) ? saved.stack : [];
-          const cleaned = restoredStack.filter((q: any) => !isExpiredKey(q.key));
+          const cleaned = restoredStack.filter(
+            (q: any) => !isExpiredKey(q.key)
+          );
 
           setStack(cleaned);
           setIdx(
@@ -557,6 +591,12 @@ export default function PracticePage() {
       a = cloneVec((ex as any).initialA);
       b = cloneVec((ex as any).b ?? { x: 2, y: 1, z: 0 });
     }
+    const mat =
+      ex.kind === "matrix_input"
+        ? Array.from({ length: ex.rows }, () =>
+            Array.from({ length: ex.cols }, () => "")
+          )
+        : [];
 
     return {
       key: k,
@@ -564,6 +604,8 @@ export default function PracticePage() {
       single: "",
       multi: [],
       num: "",
+      mat, // ✅
+
       dragA: a,
       dragB: b,
       result: null,
@@ -852,10 +894,9 @@ export default function PracticePage() {
 
   const badge = useMemo(() => {
     if (!exercise) return "";
-    return `${String(exercise.topic).toUpperCase()} • ${exercise.kind.replaceAll(
-      "_",
-      " "
-    )}`;
+    return `${String(
+      exercise.topic
+    ).toUpperCase()} • ${exercise.kind.replaceAll("_", " ")}`;
   }, [exercise]);
 
   const resultBox =
@@ -873,7 +914,9 @@ export default function PracticePage() {
     padRef.current.b = { ...current.dragB } as any;
 
     // These are still your “view toggles” for VectorPad overlays
-    padRef.current.showProjection = String(current.exercise.topic).includes("projection");
+    padRef.current.showProjection = String(current.exercise.topic).includes(
+      "projection"
+    );
     padRef.current.showAngle = String(current.exercise.topic).includes("angle");
     padRef.current.showComponents = true;
     padRef.current.showGrid = true;
@@ -1345,6 +1388,26 @@ export default function PracticePage() {
                   className="relative h-[520px] w-full"
                 />
               </div>
+            ) : exercise.kind === "matrix_input" ? (
+              <div className="grid gap-3">
+                {exercise.hint ? (
+                  <MathMarkdown
+                    className="prose prose-sm max-w-none"
+                    content={exercise.hint}
+                  />
+                ) : null}
+
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <MatrixEntryInput
+                    labelLatex={String.raw`\mathbf{A}=`}
+                    rows={exercise.rows}
+                    cols={exercise.cols}
+                    // step={exercise.step ?? 1}
+                    value={current.mat}
+                    onChange={(next) => updateCurrent({ mat: next })}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="grid gap-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
@@ -1424,7 +1487,8 @@ export default function PracticePage() {
                       {t("exercises.vectorDragDot.cards.aCurrent")}
                     </div>
                     <div className="font-mono text-white/85">
-                      ({current.dragA.x.toFixed(2)}, {current.dragA.y.toFixed(2)})
+                      ({current.dragA.x.toFixed(2)},{" "}
+                      {current.dragA.y.toFixed(2)})
                     </div>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/20 p-3">

@@ -6,6 +6,7 @@ export type ExpectedByKind = {
   numeric: { kind: "numeric"; value: number; tolerance: number };
   single_choice: { kind: "single_choice"; optionId: string };
   multi_choice: { kind: "multi_choice"; optionIds: string[] };
+  matrix_input: { kind: "matrix_input"; values: number[][]; tolerance: number };
   vector_drag_target: {
     kind: "vector_drag_target";
     targetA: Vec3;

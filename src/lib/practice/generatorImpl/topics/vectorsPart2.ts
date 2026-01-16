@@ -5,6 +5,7 @@ import type {
   ExerciseKind,
   NumericExercise,
   SingleChoiceExercise,
+  MatrixInputExercise,
 } from "../../types";
 import type { GenOut } from "../expected";
 import type { RNG } from "../rng";
@@ -17,7 +18,17 @@ function fmtSetVec2(vs: Array<{ x: number; y: number }>) {
   return String.raw`\left\{${vs.map((v) => fmtVec2(v.x, v.y)).join(", ")}\right\}`;
 }
 function fmtSpan2(vs: Array<{ x: number; y: number }>) {
-  return String.raw`\operatorname{span}\!\left\{${vs.map((v) => fmtVec2(v.x, v.y)).join(", ")}\right\}`;
+  return String.raw`\operatorname{span}\!\left\{${vs
+    .map((v) => fmtVec2(v.x, v.y))
+    .join(", ")}\right\}`;
+}
+
+// ---------------- matrix-input helpers ----------------
+function vec2ToColMatrix(v: { x: number; y: number }) {
+  return [[v.x], [v.y]]; // 2×1
+}
+function coeffsToColMatrix(c1: number, c2: number) {
+  return [[c1], [c2]]; // 2×1
 }
 
 // ---------------- math helpers ----------------
@@ -62,9 +73,131 @@ export function genVectorsPart2(
     { value: "subspace_rules" as const, w: 3 },
     { value: "basis_check_det" as const, w: 4 },
     { value: "basis_coordinates_one" as const, w: diff === "easy" ? 1 : 4 },
+
+    // ✅ NEW: vector input (matrix_input, 2×1)
+    { value: "vector_input_combo_full" as const, w: diff === "easy" ? 2 : 4 },
+    { value: "vector_input_basis_coords_full" as const, w: diff === "hard" ? 4 : 2 },
   ]);
 
   const TOPIC = "vectors" as const;
+
+  // ------------------------------------------------------------
+  // ✅ NEW) Vector input: compute full linear combination vector w (2×1)
+  // ------------------------------------------------------------
+  if (archetype === "vector_input_combo_full") {
+    const v1 = { x: rng.int(-range, range), y: rng.int(-range, range) };
+    const v2 = { x: rng.int(-range, range), y: rng.int(-range, range) };
+    const v3 = { x: rng.int(-range, range), y: rng.int(-range, range) };
+
+    let l1 = 0,
+      l2 = 0,
+      l3 = 0;
+    while (l1 === 0 && l2 === 0 && l3 === 0) {
+      l1 = rng.int(-3, 3);
+      l2 = rng.int(-3, 3);
+      l3 = rng.int(-3, 3);
+    }
+
+    const w = {
+      x: l1 * v1.x + l2 * v2.x + l3 * v3.x,
+      y: l1 * v1.y + l2 * v2.y + l3 * v3.y,
+    };
+
+    const prompt = String.raw`
+Let
+$$
+\vec w = ${l1}\vec v_1 + ${l2}\vec v_2 + ${l3}\vec v_3
+$$
+with
+$$
+\vec v_1=${fmtVec2(v1.x, v1.y)},\quad
+\vec v_2=${fmtVec2(v2.x, v2.y)},\quad
+\vec v_3=${fmtVec2(v3.x, v3.y)}.
+$$
+
+Compute $$\vec w$$ and enter your answer as a **column vector** (shape $$2\times1$$).
+`.trim();
+
+    const exercise: MatrixInputExercise = {
+      id,
+      topic: TOPIC,
+      difficulty: diff,
+      kind: "matrix_input",
+      title: "Vector input: linear combination",
+      prompt,
+      rows: 2,
+      cols: 1,
+      tolerance: 0,
+      integerOnly: true,
+      step: 1,
+      hint: "Compute x and y separately, then enter w as a 2×1 column vector.",
+    };
+
+    return {
+      archetype,
+      exercise,
+      expected: { kind: "matrix_input", values: vec2ToColMatrix(w), tolerance: 0 },
+    };
+  }
+
+  // ------------------------------------------------------------
+  // ✅ NEW) Vector input: solve for BOTH basis coordinates [c1;c2] (2×1)
+  // ------------------------------------------------------------
+  if (archetype === "vector_input_basis_coords_full") {
+    const { a: b1, b: b2 } = pickNonCollinearPair(rng, Math.max(3, Math.floor(range / 2)));
+
+    const c1 =
+      diff === "easy" ? randNonZeroInt(rng, -2, 2) : randNonZeroInt(rng, -3, 3);
+    const c2 =
+      diff === "easy" ? randNonZeroInt(rng, -2, 2) : randNonZeroInt(rng, -3, 3);
+
+    const p = { x: c1 * b1.x + c2 * b2.x, y: c1 * b1.y + c2 * b2.y };
+
+    const prompt = String.raw`
+Let the basis vectors be
+$$
+\vec b_1=${fmtVec2(b1.x, b1.y)},\qquad
+\vec b_2=${fmtVec2(b2.x, b2.y)}.
+$$
+
+A point is given by
+$$
+\vec p=${fmtVec2(p.x, p.y)}.
+$$
+
+Find the coordinate vector
+$$
+\vec c=\begin{bmatrix}c_1\\ c_2\end{bmatrix}
+$$
+such that
+$$
+\vec p=c_1\vec b_1+c_2\vec b_2.
+$$
+
+Enter $$\vec c$$ as a **column vector** (shape $$2\times1$$).
+`.trim();
+
+    const exercise: MatrixInputExercise = {
+      id,
+      topic: TOPIC,
+      difficulty: diff,
+      kind: "matrix_input",
+      title: "Vector input: basis coordinates",
+      prompt,
+      rows: 2,
+      cols: 1,
+      tolerance: 0,
+      integerOnly: true,
+      step: 1,
+      hint: "Solve for c1 and c2 so that c1 b1 + c2 b2 = p, then enter [c1;c2].",
+    };
+
+    return {
+      archetype,
+      exercise,
+      expected: { kind: "matrix_input", values: coeffsToColMatrix(c1, c2), tolerance: 0 },
+    };
+  }
 
   // ------------------------------------------------------------
   // 1) Vector set: finite/infinite/empty
@@ -141,7 +274,9 @@ $$
     const v2 = { x: rng.int(-range, range), y: rng.int(-range, range) };
     const v3 = { x: rng.int(-range, range), y: rng.int(-range, range) };
 
-    let l1 = 0, l2 = 0, l3 = 0;
+    let l1 = 0,
+      l2 = 0,
+      l3 = 0;
     while (l1 === 0 && l2 === 0 && l3 === 0) {
       l1 = rng.int(-3, 3);
       l2 = rng.int(-3, 3);
@@ -493,5 +628,9 @@ $$
     prompt: "Fallback exercise.",
     options: [{ id: "ok", text: "OK" }],
   };
-  return { archetype: "fallback", exercise: fallback, expected: { kind: "single_choice", optionId: "ok" } };
+  return {
+    archetype: "fallback",
+    exercise: fallback,
+    expected: { kind: "single_choice", optionId: "ok" },
+  };
 }

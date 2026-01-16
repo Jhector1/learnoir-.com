@@ -14,10 +14,43 @@ type SubmitAnswer =
   | { kind: "multi_choice"; optionIds: string[] }
   | { kind: "numeric"; value: number }
   | { kind: "vector_drag_target"; a: { x: number; y: number; z?: number }; b?: any }
-  | { kind: "vector_drag_dot"; a: { x: number; y: number; z?: number } };
+  | { kind: "vector_drag_dot"; a: { x: number; y: number; z?: number } }
+  // ✅ NEW: matrix input (dynamic rows/cols)
+  | { kind: "matrix_input"; values: number[][] };
 
 function closeEnough(a: number, b: number, tol: number) {
   return Math.abs(a - b) <= tol;
+}
+
+// ✅ NEW: matrix compare helper
+function compareMatrix(
+  got: number[][],
+  exp: number[][],
+  tol: number
+): { ok: boolean; shapeOk: boolean; deltaMax: number } {
+  const m1 = got.length;
+  const m2 = exp.length;
+  const n1 = got[0]?.length ?? 0;
+  const n2 = exp[0]?.length ?? 0;
+
+  if (m1 !== m2 || n1 !== n2) {
+    return { ok: false, shapeOk: false, deltaMax: Infinity };
+  }
+
+  let deltaMax = 0;
+  for (let r = 0; r < m2; r++) {
+    for (let c = 0; c < n2; c++) {
+      const a = Number(got[r]?.[c]);
+      const b = Number(exp[r]?.[c]);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) {
+        return { ok: false, shapeOk: true, deltaMax: Infinity };
+      }
+      const d = Math.abs(a - b);
+      if (d > deltaMax) deltaMax = d;
+      if (d > tol) return { ok: false, shapeOk: true, deltaMax };
+    }
+  }
+  return { ok: true, shapeOk: true, deltaMax };
 }
 
 function solutionForDot(
@@ -112,7 +145,6 @@ export async function POST(req: Request) {
 
   // 1) verify key first
   const payload = verifyPracticeKey(key);
-  console.log("Practice key payload:", payload, key);
   if (!payload) {
     // ✅ extremely useful debug (safe)
     return NextResponse.json(
@@ -302,6 +334,44 @@ export async function POST(req: Request) {
   }
 
   // ----------------------------
+  // ✅ matrix_input (dynamic)
+  // ----------------------------
+  else if (instance.kind === "matrix_input") {
+    const exp = secret.expected ?? {};
+    const expValues: number[][] = Array.isArray(exp.values) ? exp.values : [];
+
+    const tol = Number(exp.tolerance ?? (instance.publicPayload as any)?.tolerance ?? 0);
+
+    const got: number[][] =
+      Array.isArray((body?.answer as any)?.values) ? (body?.answer as any).values : [];
+
+    const cmp = compareMatrix(got, expValues, tol);
+
+    ok = isReveal ? false : cmp.ok;
+
+    expected = {
+      kind: "matrix_input",
+      values: expValues,
+      tolerance: tol,
+      debug: {
+        reveal: isReveal,
+        shapeOk: cmp.shapeOk,
+        deltaMax: cmp.deltaMax,
+        receivedShape: [got.length, got[0]?.length ?? 0],
+        expectedShape: [expValues.length, expValues[0]?.length ?? 0],
+      },
+    };
+
+    explanation = isReveal
+      ? "Solution shown."
+      : ok
+      ? "Correct."
+      : cmp.shapeOk
+      ? `One or more entries differ by more than ${tol}.`
+      : "Wrong shape.";
+  }
+
+  // ----------------------------
   // vector_drag_target
   // ----------------------------
   else if (instance.kind === "vector_drag_target") {
@@ -385,8 +455,12 @@ export async function POST(req: Request) {
         debug.reason = "missing_a_or_b";
         explanation = "Missing vector data (a or b).";
       } else {
-        const ax = Number(a.x), ay = Number(a.y), az = Number(a.z ?? 0);
-        const bx = Number(b.x), by = Number(b.y), bz = Number(b.z ?? 0);
+        const ax = Number(a.x),
+          ay = Number(a.y),
+          az = Number(a.z ?? 0);
+        const bx = Number(b.x),
+          by = Number(b.y),
+          bz = Number(b.z ?? 0);
 
         const dot = ax * bx + ay * by + az * bz;
         const aMag = Math.sqrt(ax * ax + ay * ay + az * az);
