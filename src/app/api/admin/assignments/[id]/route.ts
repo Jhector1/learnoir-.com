@@ -69,13 +69,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
     );
   }
 
+  const data = parsed.data as any;
+
   // ✅ accept either topicIds: string[] or topics: { topicId, order }[]
   const topicIdsFromPayload: string[] | undefined =
-    Array.isArray((parsed.data as any).topicIds) ? (parsed.data as any).topicIds : undefined;
+    Array.isArray(data.topicIds) ? data.topicIds : undefined;
 
-  const topicsFromPayload:
-    | { topicId: string; order?: number }[]
-    | undefined = Array.isArray((parsed.data as any).topics) ? (parsed.data as any).topics : undefined;
+  const topicsFromPayload: { topicId: string; order?: number }[] | undefined =
+    Array.isArray(data.topics) ? data.topics : undefined;
 
   const normalizedTopicRows =
     topicsFromPayload?.map((t, i) => ({
@@ -84,27 +85,43 @@ export async function PATCH(req: Request, ctx: Ctx) {
     })) ??
     topicIdsFromPayload?.map((topicId, i) => ({ topicId, order: i }));
 
+  /**
+   * ✅ IMPORTANT:
+   * Do NOT spread `data` directly into Prisma `update.data`.
+   * Zod/UI payload may contain fields Prisma doesn't accept (like `sectionId`, `topicIds`, `topics`).
+   */
+  const updateData: any = {};
+
+  // ----- scalar fields (ONLY if present) -----
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;
+  if (data.questionCount !== undefined) updateData.questionCount = data.questionCount;
+
+  if (data.availableFrom !== undefined) updateData.availableFrom = data.availableFrom ?? null;
+  if (data.dueAt !== undefined) updateData.dueAt = data.dueAt ?? null;
+
+  if (data.description !== undefined) updateData.description = data.description ?? null;
+
+  // ----- ✅ sectionId -> section connect -----
+  // Prisma expects `section: { connect: { id } }`, not `sectionId: ...`
+  if (data.sectionId !== undefined) {
+    updateData.section =
+      data.sectionId === null
+        ? undefined // section is required in your schema, so don't allow null here
+        : { connect: { id: data.sectionId } };
+  }
+
+  // ----- ✅ rewrite join table if provided -----
+  if (normalizedTopicRows) {
+    updateData.topics = {
+      deleteMany: {},
+      createMany: { data: normalizedTopicRows },
+    };
+  }
+
   const updated = await prisma.assignment.update({
     where: { id },
-    data: {
-      // IMPORTANT: don’t blindly spread if your zod includes topicIds/topics
-      // Prefer picking fields in your schema; but if you keep spread, delete these first.
-      ...(parsed.data as any),
-
-      // normalize nullable strings
-      description:
-        parsed.data.description === undefined
-          ? undefined
-          : parsed.data.description ?? null,
-
-      // ✅ rewrite join table if provided
-      topics: normalizedTopicRows
-        ? {
-            deleteMany: {}, // wipe existing assignment-topic links
-            createMany: { data: normalizedTopicRows },
-          }
-        : undefined,
-    },
+    data: updateData,
     include: {
       section: {
         select: {

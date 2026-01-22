@@ -40,6 +40,16 @@ export const MODULES = [
     weekStart: 2,
     weekEnd: 3,
   },
+
+  // ✅ NEW
+  {
+    slug: "module-3",
+    order: 30,
+    title: "Module 3 — Matrices (Part 2)",
+    description: "Norms, rank, column/null spaces, determinant, and det(A−λI).",
+    weekStart: 3,
+    weekEnd: 5,
+  },
 ] as const;
 
 /**
@@ -73,7 +83,7 @@ export const TOPICS = {
   m2_matrix_inverse: "m2.matrix_inverse",
   m2_matrix_properties: "m2.matrix_properties",
 
-  // ✅ Module 2 — Matrices Part 1 (granular topics)
+  // Module 2 — Part 1 (granular)
   m2_matrices_intro: "m2.matrices_intro",
   m2_index_slice: "m2.index_slice",
   m2_special: "m2.special",
@@ -82,11 +92,17 @@ export const TOPICS = {
   m2_matvec: "m2.matvec",
   m2_transpose_liveevil: "m2.transpose_liveevil",
   m2_symmetric: "m2.symmetric",
-
-  // ✅ Optional “mix all part 1” topic (only keep if you want it)
   m2_matrices_part1_mix: "m2.matrices_part1",
-} as const satisfies Record<string, TopicSlug>;
 
+  // ✅ Module 3 — Matrices Part 2
+  m3_norms: "m3.norms",
+  m3_colspace: "m3.colspace",
+  m3_nullspace: "m3.nullspace",
+  m3_rank: "m3.rank",
+  m3_det: "m3.det",
+  m3_charpoly: "m3.charpoly",
+  m3_matrices_part2_mix: "m3.matrices_part2",
+} as const satisfies Record<string, TopicSlug>;
 export type SeedSection = {
   moduleSlug: string;
   slug: string;
@@ -294,6 +310,48 @@ export const SECTIONS: SeedSection[] = [
       weeks: "Weeks 2–3",
       bullets: ["Operations", "Inverse", "Core properties"],
       skills: ["Compute products", "Use transpose rules", "Understand inverse"],
+    },
+  },
+
+
+
+  // ✅ NEW: Module 3 section
+  {
+    moduleSlug: "module-3",
+    slug: "module-3-matrices-part-2",
+    order: 30,
+    title: "Module 3 — Matrices (Part 2)",
+    description:
+      "Frobenius norms, column/null spaces, rank, determinants, and det(A−λI) eigen intuition.",
+    topics: [
+      TOPICS.m3_norms,
+      TOPICS.m3_colspace,
+      TOPICS.m3_nullspace,
+      TOPICS.m3_rank,
+      TOPICS.m3_det,
+      TOPICS.m3_charpoly,
+
+      // optional mix topic
+      TOPICS.m3_matrices_part2_mix,
+    ],
+    meta: {
+      module: 3,
+      weeks: "Weeks 4–5",
+      bullets: [
+        "Frobenius norm and trace(AᵀA)",
+        "Column space membership via rank test",
+        "Null space and nullity",
+        "Rank meaning + tolerance intuition",
+        "Determinant and invertibility",
+        "Characteristic idea: det(A−λI)",
+      ],
+      skills: [
+        "Compute Frobenius-style quantities",
+        "Use rank(A)=rank([A|b]) test",
+        "Relate rank and nullity",
+        "Compute 2×2 determinants",
+        "Form A−λI and compute det",
+      ],
     },
   },
 ] as const;

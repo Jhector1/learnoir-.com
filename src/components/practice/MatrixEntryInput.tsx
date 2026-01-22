@@ -9,19 +9,21 @@ type Props = {
   cols: number;
   value: string[][];
   onChange: (next: string[][]) => void;
-  cellWidthClass?: string; // optional: "w-14" | "w-16" etc
+  cellWidthClass?: string; // "w-14" | "w-16" etc
+    readOnly?: boolean;
 };
 
 function normalizeGrid(value: string[][], rows: number, cols: number) {
-  const out: string[][] = Array.from({ length: rows }, (_, r) =>
-    Array.from({ length: cols }, (_, c) => String(value?.[r]?.[c] ?? ""))
+  const r = Math.max(1, Math.floor(rows));
+  const c = Math.max(1, Math.floor(cols));
+  return Array.from({ length: r }, (_, i) =>
+    Array.from({ length: c }, (_, j) => String(value?.[i]?.[j] ?? ""))
   );
-  return out;
 }
 
 function phantomForRows(rows: number) {
-  // bracket height matches number of rows
-  return String.raw`\vphantom{\begin{matrix}${Array.from({ length: rows })
+  const r = Math.max(1, Math.floor(rows));
+  return String.raw`\vphantom{\begin{matrix}${Array.from({ length: r })
     .map(() => "0")
     .join("\\\\")}\end{matrix}}`;
 }
@@ -38,13 +40,13 @@ export default function MatrixEntryInput({
 
   return (
     <div className="flex items-start gap-3">
-      <MathMarkdown inline className="text-white/90" content={`$${labelLatex}$`} />
+      {/* label */}
+      <MathMarkdown className="text-white/90" content={`$${labelLatex}$`} />
 
       <div className="max-w-full overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-3">
         <div className="flex items-center">
           {/* Left bracket */}
           <MathMarkdown
-            inline
             className="text-white/90"
             content={String.raw`$\left[${phantomForRows(rows)}\right.$`}
           />
@@ -52,26 +54,26 @@ export default function MatrixEntryInput({
           {/* Cells */}
           <div
             className="mx-2 grid gap-x-3 gap-y-2"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: `repeat(${Math.max(1, cols)}, minmax(0, 1fr))` }}
           >
-            {Array.from({ length: rows }).map((_, r) =>
-              Array.from({ length: cols }).map((__, c) => (
+            {grid.map((row, r) =>
+              row.map((cell, c) => (
                 <input
                   key={`${r}-${c}`}
                   type="text"
                   inputMode="decimal"
-                  value={grid[r][c]}
+                  value={cell}
                   onChange={(e) => {
-                    const next = grid.map((row) => row.slice());
+                    const next = grid.map((rr) => rr.slice());
                     next[r][c] = e.target.value;
                     onChange(next);
                   }}
-                  className={`
-                    ${cellWidthClass}
-                    rounded-md border border-white/10 bg-black/30
-                    px-2 py-1 text-center text-xs font-mono font-extrabold text-white/90
-                    outline-none focus:border-emerald-400/60
-                  `}
+                  className={[
+                    cellWidthClass,
+                    "rounded-md border border-white/10 bg-black/30",
+                    "px-2 py-1 text-center text-xs font-mono font-extrabold text-white/90",
+                    "outline-none focus:border-emerald-400/60",
+                  ].join(" ")}
                   placeholder="0"
                 />
               ))
@@ -80,7 +82,6 @@ export default function MatrixEntryInput({
 
           {/* Right bracket */}
           <MathMarkdown
-            inline
             className="text-white/90"
             content={String.raw`$\left.${phantomForRows(rows)}\right]$`}
           />

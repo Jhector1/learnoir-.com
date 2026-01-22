@@ -7,6 +7,7 @@ export type PracticeKeyPayload = {
   userId?: string | null;
   guestId?: string | null;
   exp: number; // unix seconds
+  allowReveal?: boolean;
 };
 
 function getSecret(): string {

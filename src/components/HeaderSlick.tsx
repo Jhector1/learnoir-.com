@@ -40,6 +40,26 @@ export default function HeaderSlick({
 
   const [open, setOpen] = useState(false);
   const [elevated, setElevated] = useState(false);
+  // inside HeaderSlick component
+const signOutHard = async () => {
+  const idToken = (session as any)?.idToken as string | undefined;
+
+  // Clear app session first (don’t redirect yet)
+  await signOut({ redirect: false });
+
+  // If we can’t do Keycloak front-channel logout, just go home
+  if (!idToken) {
+    window.location.href = `/${locale}`;
+    return;
+  }
+
+  // Redirect browser to Keycloak logout via our route
+  const url = `/api/keycloak/logout?id_token_hint=${encodeURIComponent(idToken)}`;
+  window.location.href = url;
+};
+
+
+
 
   useEffect(() => {
     const onScroll = () => setElevated(window.scrollY > 6);
@@ -139,7 +159,7 @@ export default function HeaderSlick({
                     email={user?.email}
                     image={user?.image}
                     profileHref="/profile"
-                    onSignOut={() => signOut({ callbackUrl: `/${locale}` })}
+onSignOut={signOutHard}
                   />
                 ) : (
                   <button

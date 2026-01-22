@@ -28,6 +28,7 @@ export const GENKEY_TO_DB: Record<GenKey, TopicSlug> = {
 
   // If you actually keep this generator key, you MUST seed this topic slug
   matrices_part1: "m2.matrices_part1",
+  matrices_part2: "m2.matrices_part2"
 };
 
 /**

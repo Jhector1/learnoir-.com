@@ -17,6 +17,21 @@ import MatMulExplorerSketch from "./sketches/matrices/MatMulExplorerSketch";
 import LiveEvilSketch from "./sketches/matrices/LiveEvilSketch";
 import SymmetricBuilderSketch from "./sketches/matrices/SymmetricBuilderSketch";
 import Transform2DSketch from "./sketches/matrices/Transform2DSketch";
+import MatrixNormsSketch from "./sketches/matricespart2/MatrixNormsSketch";
+import ColumnSpaceSketch from "./sketches/matricespart2/ColumnSpaceSketch";
+import NullSpaceSketch from "./sketches/matricespart2/NullSpaceSketch";
+import RankToleranceSketch from "./sketches/matricespart2/RankToleranceSketch";
+import DeterminantSketch from "./sketches/matricespart2/DeterminantSketch";
+import CharacteristicPolynomialSketch from "./sketches/matricespart2/CharacteristicPolynomialSketch";
+import Mat2RowSpaceSketch from "./sketches/matricespart2/Mat2RowSpaceSketch";
+import Mat2LeftNullspaceSketch from "./sketches/matricespart2/Mat2LeftNullspaceSketch";
+import AugmentedRankProofSketch from "./sketches/matricespart2/AugmentedRankProofSketch";
+import LinearIndependenceRankSketch from "./sketches/matricespart2/LinearIndependenceRankSketch";
+import Mat2IndependenceSketch from "./sketches/matricespart2/Mat2IndependenceSketch";
+import Mat2ShiftRankSketch from "./sketches/matricespart2/Mat2ShiftRankSketch";
+import Mat2AugmentedRankSketch from "./sketches/matricespart2/Mat2AugmentedRankSketch";
+import Mat2RankOpsSketch from "./sketches/matricespart2/Mat2RankOpsSketch";
+import Mat2OuterProductSketch from "./sketches/matricespart2/Mat2OuterProductSketch";
 
 const SKETCHES: Record<string, React.ComponentType<any>> = {
   "vec.basics": VectorBasicsSketch,
@@ -37,6 +52,31 @@ const SKETCHES: Record<string, React.ComponentType<any>> = {
   "matrices.transform2d": Transform2DSketch,
   "matrices.liveevil": LiveEvilSketch,
   "matrices.symmetric": SymmetricBuilderSketch,
+  "mat2.norms": MatrixNormsSketch,
+  // "mat2.colspace": ColumnSpaceSketch,
+  "mat2.nullspace": NullSpaceSketch,
+  "mat2.rank": RankToleranceSketch,
+  "mat2.det": DeterminantSketch,
+  "mat2.charpoly": CharacteristicPolynomialSketch,
+  // ✅ fix your errors:
+  "mat2.independence": Mat2IndependenceSketch,
+  "mat2.shift": Mat2ShiftRankSketch,
+  "mat2.augment": Mat2AugmentedRankSketch,
+  // "mat2.outer": HadamardOuterSketch,
+"mat2.rankops": Mat2RankOpsSketch,
+"mat2.outer": Mat2OuterProductSketch,
+  
+
+
+  
+  "mat2.rowspace": Mat2RowSpaceSketch,
+
+  "mat2.leftnull": Mat2LeftNullspaceSketch,
+
+  "mat2.rankTol": RankToleranceSketch,
+  "mat2.augRank": AugmentedRankProofSketch,
+
+  "mat2.linind": LinearIndependenceRankSketch,
 };
 
 export default function SketchHost({

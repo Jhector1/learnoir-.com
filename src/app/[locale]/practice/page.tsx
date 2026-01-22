@@ -1,4 +1,3 @@
-// src/app/practice/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -77,8 +76,22 @@ type QItem = {
   result: ValidateResponse | null;
   submitted: boolean;
   revealed?: boolean;
-  mat: string[][]; // ✅ NEW
+  attempts?: number;
+
+  // ✅ matrix state
+  matRows: number;
+  matCols: number;
+  mat: string[][];
 };
+
+function resizeGrid(prev: string[][], rows: number, cols: number) {
+  const r = Math.max(1, Math.floor(rows));
+  const c = Math.max(1, Math.floor(cols));
+
+  return Array.from({ length: r }, (_, i) =>
+    Array.from({ length: c }, (_, j) => String(prev?.[i]?.[j] ?? ""))
+  );
+}
 
 function cloneVec(v: any): Vec3 {
   return { x: Number(v?.x ?? 0), y: Number(v?.y ?? 0), z: Number(v?.z ?? 0) };
@@ -132,11 +145,13 @@ function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
     return { kind: "vector_drag_dot", a: { ...item.dragA } };
   }
   if (ex.kind === "matrix_input") {
-    const rows = ex.rows;
-    const cols = ex.cols;
+    const rows = Math.max(1, Math.floor(item.matRows || 0));
+    const cols = Math.max(1, Math.floor(item.matCols || 0));
 
-    if (!item.mat || item.mat.length !== rows || item.mat[0]?.length !== cols)
-      return undefined;
+    if (!item.mat || item.mat.length !== rows) return undefined;
+    for (const row of item.mat) {
+      if (!Array.isArray(row) || row.length !== cols) return undefined;
+    }
 
     const values: number[][] = [];
     for (let r = 0; r < rows; r++) {
@@ -152,6 +167,7 @@ function buildSubmitAnswerFromItem(item: QItem): SubmitAnswer | undefined {
       }
       values.push(row);
     }
+
     return { kind: "matrix_input", values };
   }
 
@@ -210,6 +226,22 @@ export default function PracticePage() {
 
   const [sessionSize, setSessionSize] = useState<number>(SESSION_DEFAULT);
 
+  // ✅ assignment detection
+  const isAssignmentRun =
+    sp.get("type") === "assignment" || !!sp.get("assignmentId");
+
+  // ✅ allowReveal/showDebug gating (assignment requires explicit URL flags)
+  const allowRevealParam = sp.get("allowReveal") === "true";
+  const showDebugParam = sp.get("showDebug") === "true";
+
+  const allowReveal = !isAssignmentRun ? true : allowRevealParam;
+  const showDebug = !isAssignmentRun
+    ? showDebugParam
+    : allowRevealParam && showDebugParam;
+
+  // ✅ attempts policy
+  const maxAttempts = isAssignmentRun ? 3 : 1;
+
   // ✅ fix topicOptions (some may still be legacy ids)
   const topicOptionsFixed = useMemo(() => {
     return topicOptions.map((o) => ({
@@ -222,6 +254,7 @@ export default function PracticePage() {
   }, []);
 
   const answeredCount = useMemo(
+    // ✅ count FINALIZED questions only
     () => stack.filter((q) => q.submitted).length,
     [stack]
   );
@@ -254,9 +287,6 @@ export default function PracticePage() {
     }
     return out;
   }, [stack]);
-
-  const isAssignmentRun =
-    sp.get("type") === "assignment" || !!sp.get("assignmentId");
 
   const hasProgress =
     phase === "practice" &&
@@ -579,7 +609,6 @@ export default function PracticePage() {
       return next;
     });
   }
-
   function initItemFromExercise(ex: Exercise, k: string): QItem {
     let a: Vec3 = { x: 0, y: 0, z: 0 };
     let b: Vec3 = { x: 2, y: 1, z: 0 };
@@ -591,12 +620,28 @@ export default function PracticePage() {
       a = cloneVec((ex as any).initialA);
       b = cloneVec((ex as any).b ?? { x: 2, y: 1, z: 0 });
     }
-    const mat =
+
+    // ✅ matrix init (editable size for medium/hard)
+    const exDiff = String((ex as any).difficulty ?? "easy");
+    const allowDimEdit =
+      ex.kind === "matrix_input" && (exDiff === "medium" || exDiff === "hard");
+
+    const matRows =
       ex.kind === "matrix_input"
-        ? Array.from({ length: ex.rows }, () =>
-            Array.from({ length: ex.cols }, () => "")
-          )
-        : [];
+        ? allowDimEdit
+          ? 2
+          : Number(ex.rows ?? 2)
+        : 0;
+
+    const matCols =
+      ex.kind === "matrix_input"
+        ? allowDimEdit
+          ? 2
+          : Number(ex.cols ?? 2)
+        : 0;
+
+    const mat =
+      ex.kind === "matrix_input" ? resizeGrid([], matRows, matCols) : [];
 
     return {
       key: k,
@@ -604,13 +649,15 @@ export default function PracticePage() {
       single: "",
       multi: [],
       num: "",
-      mat, // ✅
-
       dragA: a,
       dragB: b,
       result: null,
       submitted: false,
       revealed: false,
+
+      matRows,
+      matCols,
+      mat,
     };
   }
 
@@ -727,6 +774,13 @@ export default function PracticePage() {
     if (!current || !exercise) return;
     if (busy) return;
 
+    // ✅ lock if finalized or out of attempts (assignment)
+    if (current.submitted) return;
+if (
+  isAssignmentRun &&
+  (current.attempts ?? 0) >= maxAttempts
+) return;
+
     submitLockRef.current = true;
     setActionErr(null);
 
@@ -775,7 +829,18 @@ export default function PracticePage() {
         );
       }
 
-      updateCurrent({ result: data, submitted: true, revealed: false });
+      const nextAttempts = (current.attempts ?? 0) + 1;
+      const ok = !!data.ok;
+
+      // ✅ finalize if correct OR out of attempts
+      const finalize = ok || nextAttempts >= maxAttempts;
+
+      updateCurrent({
+        result: data,
+        attempts: nextAttempts,
+        submitted: finalize,
+        revealed: false,
+      });
     } catch (e: any) {
       setActionErr(e?.message ?? t("errors.failedToSubmit"));
     } finally {
@@ -786,6 +851,9 @@ export default function PracticePage() {
 
   async function revealAnswer() {
     if (!current || busy) return;
+
+    // ✅ UI + behavior gate
+    if (!allowReveal) return;
 
     setBusy(true);
     setActionErr(null);
@@ -860,6 +928,9 @@ export default function PracticePage() {
       if (e.key === "Enter") {
         if (shouldBlockEnter()) return;
         if (current?.submitted) return;
+        // if assignment and attempts exhausted, block
+        if (isAssignmentRun && (current?.attempts ?? 0) >= maxAttempts) return;
+
         e.preventDefault();
         void submitAnswer();
         return;
@@ -890,6 +961,8 @@ export default function PracticePage() {
     idx,
     stack.length,
     answeredCount,
+    isAssignmentRun,
+    maxAttempts,
   ]);
 
   const badge = useMemo(() => {
@@ -913,7 +986,7 @@ export default function PracticePage() {
     padRef.current.a = { ...current.dragA } as any;
     padRef.current.b = { ...current.dragB } as any;
 
-    // These are still your “view toggles” for VectorPad overlays
+    // overlay toggles
     padRef.current.showProjection = String(current.exercise.topic).includes(
       "projection"
     );
@@ -996,6 +1069,7 @@ export default function PracticePage() {
 
   // PRACTICE VIEW
   const bFixed = current?.dragB;
+const attempts = current.attempts ?? 0;
 
   return (
     <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
@@ -1082,6 +1156,19 @@ export default function PracticePage() {
                     {stack.length ? idx + 1 : 0}/{stack.length}
                   </span>
                 </div>
+
+                {isAssignmentRun && current ? (
+                  <div className="mt-1 text-xs text-white/60">
+                    Attempts:{" "}
+                  <span>
+  {attempts}/{maxAttempts}
+</span>
+
+{attempts >= maxAttempts && !current.submitted
+  ? null
+  : null}
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-extrabold text-white/70">
@@ -1152,7 +1239,12 @@ export default function PracticePage() {
                 <button
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 disabled:opacity-50"
                   onClick={submitAnswer}
-                  disabled={busy || !exercise || !!current?.submitted}
+                  disabled={
+                    busy ||
+                    !exercise ||
+                    !!current?.submitted ||
+                    (isAssignmentRun && (current?.attempts ?? 0) >= maxAttempts)
+                  }
                 >
                   {t("buttons.submit")}
                 </button>
@@ -1160,11 +1252,17 @@ export default function PracticePage() {
                 <button
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold hover:bg-white/15 disabled:opacity-50"
                   onClick={revealAnswer}
-                  disabled={busy || !exercise}
+                  disabled={busy || !exercise || !allowReveal}
                 >
                   {t("buttons.reveal")}
                 </button>
               </div>
+
+              {isAssignmentRun && !allowReveal ? (
+                <div className="text-[11px] text-white/45">
+                  Reveal is disabled for this assignment run.
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1191,8 +1289,21 @@ export default function PracticePage() {
                       ? t("result.revealed")
                       : current.result.ok
                       ? t("result.correct")
-                      : t("result.incorrect")}
+                      : current.submitted
+                      ? t("result.incorrect")
+                      : "Incorrect — try again"}
                   </div>
+
+                  {isAssignmentRun &&
+                  !current.result.ok &&
+                  !current.submitted ? (
+                    <div className="mt-2 text-white/70">
+                      Attempts left:{" "}
+                      <span className="font-extrabold text-white/85">
+                        {Math.max(0, maxAttempts - attempts)}
+                      </span>
+                    </div>
+                  ) : null}
 
                   {current.result.explanation ? (
                     <div className="mt-2 text-white/80">
@@ -1200,7 +1311,10 @@ export default function PracticePage() {
                     </div>
                   ) : null}
 
-                  <ExpectedSummary result={current.result as any} />
+                  <ExpectedSummary
+                    result={current.result as any}
+                    showDebug={showDebug}
+                  />
                 </>
               )}
             </div>
@@ -1254,6 +1368,7 @@ export default function PracticePage() {
                       className="scale-110 accent-blue-500"
                       checked={current.single === o.id}
                       onChange={() => updateCurrent({ single: o.id })}
+                      disabled={busy || current.submitted}
                     />
                     <span className="text-sm font-extrabold text-white/85 break-words">
                       <MathMarkdown content={o.text} />
@@ -1274,6 +1389,7 @@ export default function PracticePage() {
                         type="checkbox"
                         className="scale-110 accent-blue-500"
                         checked={checked}
+                        disabled={busy || current.submitted}
                         onChange={() =>
                           updateCurrent({
                             multi: checked
@@ -1303,8 +1419,9 @@ export default function PracticePage() {
                     {t("answer.yourAnswer")}
                   </div>
                   <input
-                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold tabular-nums text-white/90 outline-none"
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold tabular-nums text-white/90 outline-none disabled:opacity-60"
                     value={current.num}
+                    disabled={busy || current.submitted}
                     onChange={(e) => updateCurrent({ num: e.target.value })}
                     placeholder={t("answer.placeholder")}
                   />
@@ -1397,12 +1514,85 @@ export default function PracticePage() {
                   />
                 ) : null}
 
+                {/* ✅ medium/hard: user chooses dimensions */}
+                {(() => {
+                  const exDiff = String((exercise as any).difficulty ?? "easy");
+                  const allowDimEdit = exDiff === "medium" || exDiff === "hard";
+
+                  return allowDimEdit ? (
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/70">
+                      <div className="font-extrabold text-white/80">
+                        Matrix dimensions
+                      </div>
+                      <div className="mt-1">
+                        For medium/hard, you must infer the shape from the
+                        problem. Set rows × cols, then enter values.
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <label className="grid gap-1">
+                          <span className="text-[11px] font-extrabold text-white/60">
+                            Rows
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={12}
+                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none"
+                            value={current.matRows}
+                            onChange={(e) => {
+                              const nextRows = Math.max(
+                                1,
+                                Math.min(12, Number(e.target.value || 1))
+                              );
+                              updateCurrent({
+                                matRows: nextRows,
+                                mat: resizeGrid(
+                                  current.mat,
+                                  nextRows,
+                                  current.matCols
+                                ),
+                              });
+                            }}
+                          />
+                        </label>
+
+                        <label className="grid gap-1">
+                          <span className="text-[11px] font-extrabold text-white/60">
+                            Cols
+                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={12}
+                            className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-extrabold text-white/90 outline-none"
+                            value={current.matCols}
+                            onChange={(e) => {
+                              const nextCols = Math.max(
+                                1,
+                                Math.min(12, Number(e.target.value || 1))
+                              );
+                              updateCurrent({
+                                matCols: nextCols,
+                                mat: resizeGrid(
+                                  current.mat,
+                                  current.matRows,
+                                  nextCols
+                                ),
+                              });
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <MatrixEntryInput
                     labelLatex={String.raw`\mathbf{A}=`}
-                    rows={exercise.rows}
-                    cols={exercise.cols}
-                    // step={exercise.step ?? 1}
+                    rows={current.matRows}
+                    cols={current.matCols}
                     value={current.mat}
                     onChange={(next) => updateCurrent({ mat: next })}
                   />
@@ -1626,8 +1816,10 @@ function PracticeSummary({ missed }: { missed: MissedItem[] }) {
   );
 }
 
-function DetailsBlock({ value }: { value: any }) {
+function DetailsBlock({ value, show }: { value: any; show: boolean }) {
   const t = useTranslations("Practice.answer");
+  if (!show) return null;
+
   return (
     <details className="mt-2">
       <summary className="cursor-pointer text-white/60 hover:text-white/80">
@@ -1640,7 +1832,13 @@ function DetailsBlock({ value }: { value: any }) {
   );
 }
 
-function ExpectedSummary({ result }: { result: any }) {
+function ExpectedSummary({
+  result,
+  showDebug,
+}: {
+  result: any;
+  showDebug: boolean;
+}) {
   const t = useTranslations("Practice.expectedSummary");
 
   const exp = result?.expected;
@@ -1676,7 +1874,7 @@ function ExpectedSummary({ result }: { result: any }) {
           </div>
         </div>
 
-        <DetailsBlock value={exp} />
+        <DetailsBlock value={exp} show={showDebug} />
       </div>
     );
   }
@@ -1692,7 +1890,7 @@ function ExpectedSummary({ result }: { result: any }) {
           <div className={label}>{t("correct")}</div>
           <div className={mono}>{exp.optionId ?? "—"}</div>
         </div>
-        <DetailsBlock value={exp} />
+        <DetailsBlock value={exp} show={showDebug} />
       </div>
     );
   }
@@ -1726,7 +1924,7 @@ function ExpectedSummary({ result }: { result: any }) {
             ) : null}
           </div>
         ) : null}
-        <DetailsBlock value={exp} />
+        <DetailsBlock value={exp} show={showDebug} />
       </div>
     );
   }
@@ -1752,7 +1950,7 @@ function ExpectedSummary({ result }: { result: any }) {
           <div className={label}>{t("tolerance")}</div>
           <div className={mono}>± {exp.tolerance}</div>
         </div>
-        <DetailsBlock value={exp} />
+        <DetailsBlock value={exp} show={showDebug} />
       </div>
     );
   }
@@ -1774,7 +1972,7 @@ function ExpectedSummary({ result }: { result: any }) {
               : "—"}
           </div>
         </div>
-        <DetailsBlock value={exp} />
+        <DetailsBlock value={exp} show={showDebug} />
       </div>
     );
   }
@@ -1782,7 +1980,7 @@ function ExpectedSummary({ result }: { result: any }) {
   return (
     <div className={card}>
       <div className="text-white/70">{t("generic")}</div>
-      <DetailsBlock value={exp} />
+      <DetailsBlock value={exp} show={showDebug} />
     </div>
   );
 }

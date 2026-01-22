@@ -27,7 +27,14 @@ export const ALL_TOPICS: Topic[] = [
   "matmul",
   "matvec",
   "transpose_liveevil",
-  "symmetric"
+  "symmetric",
+
+ "norms",
+  "colspace",
+   "nullspace",
+ "rank",
+   "det",
+  "charpoly",
 ];
 
 export function normalizeTopic(t: Topic | "all", rng: RNG): Topic {

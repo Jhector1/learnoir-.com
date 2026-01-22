@@ -1,4 +1,3 @@
-// src/middleware.ts (or src/proxy.ts if you’re using that name)
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
@@ -27,9 +26,6 @@ function isPublicPath(pathname: string) {
   // IMPORTANT: pathname here is locale-stripped
   return (
     pathname === "/" ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/api/auth") ||
     pathname.startsWith("/authenticate") ||
     pathname.startsWith("/pricing") ||
     pathname.startsWith("/billing")
@@ -52,14 +48,22 @@ const POSSIBLE_SESSION_COOKIES = [
   "next-auth.session-token",
 ] as const;
 
-// If you used document.cookie = `NEXT_LOCALE=...` in the language switcher:
 const LOCALE_COOKIE = "NEXT_LOCALE";
 
 export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ✅ If user hits a non-locale URL (e.g. /assignments), redirect to their saved locale:
-  // This is the part that makes "language for the current page" persist across refreshes and direct links.
+  // ✅ HARD BYPASS: never touch NextAuth/API or internals/static assets
+  if (
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    /\.[a-zA-Z0-9]+$/.test(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
+  // ✅ Persist saved locale ONLY for non-locale, non-api requests
   if (!hasLocalePrefix(pathname)) {
     const saved = req.cookies.get(LOCALE_COOKIE)?.value;
 
@@ -76,7 +80,7 @@ export default async function middleware(req: NextRequest) {
   const { pathname: p2, search } = req.nextUrl;
   const { locale, path } = stripLocale(p2);
 
-  // 2) apply your auth checks on locale-stripped path
+  // 2) apply auth checks on locale-stripped path
   if (isPublicPath(path) || !isProtectedPath(path)) return res;
 
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
@@ -110,6 +114,5 @@ export default async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // exclude next internals + files; keep your style
   matcher: ["/((?!api|_next|favicon.ico|.*\\..*).*)"],
 };

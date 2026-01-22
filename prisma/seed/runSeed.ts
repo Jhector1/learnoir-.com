@@ -14,6 +14,7 @@ function moduleSlugFromTopicSlug(topicSlug: string): string | null {
   if (prefix === "m0") return "module-0";
   if (prefix === "m1") return "module-1";
   if (prefix === "m2") return "module-2";
+  if (prefix === "m3") return "module-3";
   return null;
 }
 
@@ -62,7 +63,20 @@ function genKeyFromTopicSlug(topicSlug: string): string | null {
   ) {
     return "matrices_part1";
   }
-
+// ✅ Module 3 — Matrices Part 2 (ALL share one engine)
+  if (
+    topicSlug === "m3.matrices_part2" ||
+    [
+      "m3.norms",
+      "m3.colspace",
+      "m3.nullspace",
+      "m3.rank",
+      "m3.det",
+      "m3.charpoly",
+    ].includes(topicSlug)
+  ) {
+    return "matrices_part2";
+  }
   return null;
 }
 
@@ -86,6 +100,18 @@ function variantForTopicSlug(topicSlug: string): string | null {
         "symmetric",
       ].includes(suffix)
     ) {
+      return suffix;
+    }
+  }
+
+  // ✅ Module 3: store suffix as variant for subtopics
+  if (topicSlug.startsWith("m3.")) {
+    const suffix = topicSlug.split(".")[1];
+
+    // “mix” has no variant
+    if (suffix === "matrices_part2") return null;
+
+    if (["norms", "colspace", "nullspace", "rank", "det", "charpoly"].includes(suffix)) {
       return suffix;
     }
   }

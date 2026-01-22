@@ -14,6 +14,8 @@ type Assignment = {
   availableFrom: string | null;
   dueAt: string | null;
   timeLimitSec: number | null;
+  allowReveal: boolean;
+  showDebug: boolean;
   maxAttempts: number | null;
   attemptsUsed?: number;
   attemptsRemaining?: number | null;
@@ -50,6 +52,7 @@ export default function AssignmentsPage() {
         }
 
         const data = await r.json();
+        console.log("AssignmentsPage: fetched data:", data.assignments); // DEBUG
         setItems(data.assignments ?? []);
       } finally {
         setBusy(false);
@@ -61,7 +64,9 @@ export default function AssignmentsPage() {
     id: string,
     difficulty: string,
     topicForSection: string,
-    questionCount: number
+    questionCount: number,
+    allowReveal?: boolean,
+    showDebug?: boolean
   ) => {
     const r = await fetch(`/api/assignments/${id}/start`, { method: "POST" });
 
@@ -85,7 +90,7 @@ export default function AssignmentsPage() {
     }
 
     router.push(
-      `/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}&questionCount=${questionCount}`
+      `/practice?sessionId=${encodeURIComponent(data.sessionId)}&type=assignment&difficulty=${difficulty}&topic=${topicForSection}&questionCount=${questionCount}&allowReveal=${allowReveal}&showDebug=${showDebug}`
     );
   };
 
@@ -149,7 +154,7 @@ export default function AssignmentsPage() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount ?? 10)}
+                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount ?? 10, a.allowReveal, a.showDebug)}
                       className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15"
                     >
                       Start

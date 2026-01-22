@@ -15,6 +15,8 @@ export type Topic = TopicSlug;
 /**
  * Generator engine keys (ONLY engines you implement).
  */
+
+
 export type GenKey =
   | "dot"
   | "projection"
@@ -30,7 +32,9 @@ export type GenKey =
   | "matrix_ops"
   | "matrix_inverse"
   | "matrix_properties"
-  | "matrices_part1";
+  | "matrices_part1"
+  | "matrices_part2"; // ✅ NEW
+
 
 export type ExerciseKind =
   | "single_choice"

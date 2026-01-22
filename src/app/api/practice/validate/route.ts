@@ -15,14 +15,12 @@ type SubmitAnswer =
   | { kind: "numeric"; value: number }
   | { kind: "vector_drag_target"; a: { x: number; y: number; z?: number }; b?: any }
   | { kind: "vector_drag_dot"; a: { x: number; y: number; z?: number } }
-  // ✅ NEW: matrix input (dynamic rows/cols)
   | { kind: "matrix_input"; values: number[][] };
 
 function closeEnough(a: number, b: number, tol: number) {
   return Math.abs(a - b) <= tol;
 }
 
-// ✅ NEW: matrix compare helper
 function compareMatrix(
   got: number[][],
   exp: number[][],
@@ -102,14 +100,6 @@ function solutionForDot(
   return { x: ax, y: ay, z: az };
 }
 
-/**
- * ✅ Normalize key from client.
- * Supports:
- * - string
- * - { token: string }
- * - { key: string }
- * - { value: string } (some libs do this)
- */
 function normalizeKey(input: unknown): string | null {
   if (typeof input === "string") return input;
 
@@ -146,7 +136,6 @@ export async function POST(req: Request) {
   // 1) verify key first
   const payload = verifyPracticeKey(key);
   if (!payload) {
-    // ✅ extremely useful debug (safe)
     return NextResponse.json(
       {
         message: "Invalid or expired key.",
@@ -196,31 +185,33 @@ export async function POST(req: Request) {
     return attachGuestCookie(res, setGuestId);
   }
 
-  // ✅ If instance belongs to an assignment session, require subscription
-  if (instance.sessionId) {
-    const sess = await prisma.practiceSession.findUnique({
-      where: { id: instance.sessionId },
-      select: { assignmentId: true, userId: true, guestId: true },
-    });
+  // ✅ If instance belongs to a session, load session info once
+  const sess = instance.sessionId
+    ? await prisma.practiceSession.findUnique({
+        where: { id: instance.sessionId },
+        select: { assignmentId: true, userId: true, guestId: true },
+      })
+    : null;
 
-    if (sess?.assignmentId) {
-      const gate = await requireEntitledUser();
-      if (!gate.ok) return gate.res;
+  const isAssignment = Boolean(sess?.assignmentId);
 
-      // must belong to this user
-      if (sess.userId && sess.userId !== gate.userId) {
-        return NextResponse.json({ message: "Forbidden." }, { status: 403 });
-      }
+  // ✅ Assignment: require subscription + ownership
+  if (isAssignment) {
+    const gate = await requireEntitledUser();
+    if (!gate.ok) return gate.res;
+
+    if (sess?.userId && sess.userId !== gate.userId) {
+      return NextResponse.json({ message: "Forbidden." }, { status: 403 });
     }
+  }
 
-    // also ensure actor matches session owner
-    if (
-      (sess?.userId && sess.userId !== (actor.userId ?? null)) ||
-      (sess?.guestId && sess.guestId !== (actor.guestId ?? null))
-    ) {
-      const res = NextResponse.json({ message: "Forbidden." }, { status: 403 });
-      return attachGuestCookie(res, setGuestId);
-    }
+  // also ensure actor matches session owner
+  if (
+    (sess?.userId && sess.userId !== (actor.userId ?? null)) ||
+    (sess?.guestId && sess.guestId !== (actor.guestId ?? null))
+  ) {
+    const res = NextResponse.json({ message: "Forbidden." }, { status: 403 });
+    return attachGuestCookie(res, setGuestId);
   }
 
   const secret = instance.secretPayload as any;
@@ -230,6 +221,61 @@ export async function POST(req: Request) {
   let explanation = "";
 
   const isReveal = Boolean(body?.reveal);
+
+  // ✅ SERVER-SIDE REVEAL GUARD:
+  // Only allow reveal when the signed key explicitly carries allowReveal=true
+  // (You’ll add this to signPracticeKey payload in /api/practice below)
+  const allowRevealFromKey = Boolean((payload as any).allowReveal);
+
+  if (isReveal && isAssignment && !allowRevealFromKey) {
+    const res = NextResponse.json(
+      { message: "Reveal is disabled for this assignment session." },
+      { status: 403 }
+    );
+    return attachGuestCookie(res, setGuestId);
+  }
+  // ✅ Attempts: assignment = 3, practice = 5
+  const maxAttempts = isAssignment ? 3 : 5;
+
+  // ✅ If already finalized (answeredAt set), block more attempts (but allow reveal logic to run if you want)
+  if (!isReveal && instance.answeredAt) {
+    const res = NextResponse.json(
+      {
+        message: "This question is already finalized.",
+        finalized: true,
+      },
+      { status: 409 }
+    );
+    return attachGuestCookie(res, setGuestId);
+  }
+
+  // ✅ Count NON-reveal attempts for THIS actor on THIS instance
+  const attemptWhere: Prisma.PracticeAttemptWhereInput = {
+    instanceId: instance.id,
+    revealUsed: false,
+    OR: [
+      actor.userId ? { userId: actor.userId } : undefined,
+      actor.guestId ? { guestId: actor.guestId } : undefined,
+    ].filter(Boolean) as any,
+  };
+
+  const priorNonRevealAttempts = await prisma.practiceAttempt.count({
+    where: attemptWhere,
+  });
+
+  // ✅ If no attempts left, block
+  if (!isReveal && priorNonRevealAttempts >= maxAttempts) {
+    const res = NextResponse.json(
+      {
+        message: "No attempts left for this question.",
+        attempts: { used: priorNonRevealAttempts, max: maxAttempts, left: 0 },
+        finalized: true,
+      },
+      { status: 409 }
+    );
+    return attachGuestCookie(res, setGuestId);
+  }
+
 
   // ----------------------------
   // numeric
@@ -334,7 +380,7 @@ export async function POST(req: Request) {
   }
 
   // ----------------------------
-  // ✅ matrix_input (dynamic)
+  // matrix_input
   // ----------------------------
   else if (instance.kind === "matrix_input") {
     const exp = secret.expected ?? {};
@@ -432,7 +478,9 @@ export async function POST(req: Request) {
     const debug: any = {
       reveal: isReveal,
       receivedA: null,
-      usedB: b ? { x: Number(b.x ?? 0), y: Number(b.y ?? 0), z: Number(b.z ?? 0) } : null,
+      usedB: b
+        ? { x: Number(b.x ?? 0), y: Number(b.y ?? 0), z: Number(b.z ?? 0) }
+        : null,
       dot: null,
       aMag: null,
       delta: null,
@@ -484,7 +532,21 @@ export async function POST(req: Request) {
         }
       }
     }
+  } else {
+    return NextResponse.json(
+      { message: `Unsupported instance kind: ${String(instance.kind)}` },
+      { status: 400 }
+    );
   }
+
+  // ✅ compute attempts AFTER this submission (non-reveal only)
+  const nextNonRevealAttempts = isReveal
+    ? priorNonRevealAttempts
+    : priorNonRevealAttempts + 1;
+
+  // ✅ finalized rule for BOTH practice + assignment:
+  // finalize when correct OR attempts exhausted (reveal never finalizes)
+  const finalized = !isReveal && (ok || nextNonRevealAttempts >= maxAttempts);
 
   // Save attempt
   await prisma.practiceAttempt.create({
@@ -499,7 +561,8 @@ export async function POST(req: Request) {
     },
   });
 
-  const shouldMarkAnswered = instance.answeredAt ? false : !isReveal;
+  // ✅ Mark answered only when finalized
+  const shouldMarkAnswered = instance.answeredAt ? false : finalized;
   if (shouldMarkAnswered) {
     await prisma.practiceQuestionInstance.update({
       where: { id: instance.id },
@@ -507,8 +570,10 @@ export async function POST(req: Request) {
     });
   }
 
+  // ✅ Only count toward session totals when finalized and first time answeredAt was null
   const shouldCountTowardSession =
-    !isReveal && Boolean(instance.sessionId) && instance.answeredAt === null;
+    finalized && Boolean(instance.sessionId) && instance.answeredAt === null;
+
 
   let sessionComplete = false;
   let sessionSummary: null | {
@@ -569,6 +634,12 @@ export async function POST(req: Request) {
     ok: isReveal ? false : ok,
     expected,
     explanation,
+    finalized,
+    attempts: {
+      used: nextNonRevealAttempts,
+      max: maxAttempts,
+      left: Math.max(0, maxAttempts - nextNonRevealAttempts),
+    },
     sessionComplete,
     summary: sessionSummary,
   });

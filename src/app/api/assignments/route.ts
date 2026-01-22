@@ -23,7 +23,8 @@ export async function GET() {
       slug: true,
       title: true,
       description: true,
-
+      allowReveal: true,
+      showDebug: true,
       // ✅ topics is now a join table
       topics: {
         orderBy: { order: "asc" },
@@ -31,6 +32,7 @@ export async function GET() {
       },
 
       difficulty: true,
+
       questionCount: true,
       availableFrom: true,
       dueAt: true,
@@ -42,7 +44,6 @@ export async function GET() {
   type AssignmentRow = Awaited<typeof assignmentsPromise>[number];
   const assignments = await assignmentsPromise;
 
-
   // optional: attempts remaining (only if actor exists)
   let counts = new Map<string, number>();
 
@@ -51,7 +52,9 @@ export async function GET() {
       by: ["assignmentId"],
       where: {
         assignmentId: { in: assignments.map((a: AssignmentRow) => a.id) },
-        ...(actor.userId ? { userId: actor.userId } : { guestId: actor.guestId }),
+        ...(actor.userId
+          ? { userId: actor.userId }
+          : { guestId: actor.guestId }),
       },
       _count: { _all: true },
     });

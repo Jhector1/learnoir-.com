@@ -18,6 +18,7 @@ import { genVectorsPart2 } from "./topics/vectorsPart2";
 import { genVectorsPart1 } from "./topics/vectorsPart1";
 
 import { makeGenMatricesPart1 } from "./topics/matricesPart1";
+import { makeGenMatricesPart2 } from "./topics/matricesPart2";
 
 export type GenFn = (
   rng: RNG,
@@ -36,6 +37,16 @@ const MATRIX_PART1_VARIANTS = [
   "m2.transpose_liveevil",
   "m2.symmetric",
 ] as const;
+const MATRIX_PART2_VARIANTS = [
+ "m3.norms",
+   "m3.colspace",
+  "m3.nullspace",
+ "m3.rank",
+ "m3.det",
+  "m3.charpoly",
+
+] as const;
+
 
 export const TOPIC_GENERATORS: Record<GenKey, GenFn> = {
   dot: genDot as GenFn,
@@ -65,5 +76,17 @@ export const TOPIC_GENERATORS: Record<GenKey, GenFn> = {
         : rng.pick(MATRIX_PART1_VARIANTS as any);
 
     return makeGenMatricesPart1(slug as string)(rng, diff, id);
+  },
+    // ✅ NEW
+  matrices_part2: (rng, diff, id, opts) => {
+    const v = opts?.variant;
+    const slug =
+      v && v.startsWith("m3.")
+        ? v
+        : v
+        ? `m3.${v}`
+        : rng.pick(MATRIX_PART2_VARIANTS as any);
+
+    return makeGenMatricesPart2(slug as string)(rng, diff, id);
   },
 };

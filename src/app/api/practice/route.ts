@@ -15,13 +15,14 @@ import { genKeyFromAnySlug, toDbTopicSlug } from "@/lib/practice/topicSlugs";
 import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
 import { TOPIC_GENERATORS } from "@/lib/practice/generatorImpl/topicRegistry";
 
+// ✅ IMPORTANT: use Prisma enum for instance.kind
+import { PracticeKind } from "@prisma/client";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ✅ engine-supported topics only
 const GEN_TOPICS = Object.keys(TOPIC_GENERATORS) as GenKey[];
 
-// Small helper so you never forget cookies again
 function withGuestCookie<T>(
   body: T,
   status: number,
@@ -31,11 +32,6 @@ function withGuestCookie<T>(
   return attachGuestCookie(res, setGuestId);
 }
 
-/**
- * Convert ANY incoming topic query to:
- * - canonical DB slug (TopicSlug)
- * - generator key (GenKey | null)
- */
 function normalizeTopicQuery(input: string | null | undefined): {
   requestedDbSlug: TopicSlug | "all";
   genKey: GenKey | null;
@@ -43,10 +39,8 @@ function normalizeTopicQuery(input: string | null | undefined): {
   const raw = String(input ?? "").trim();
   if (!raw || raw === "all") return { requestedDbSlug: "all", genKey: null };
 
-  // canonical DB-style slug
   const dbSlug = toDbTopicSlug(raw);
 
-  // Matrices Part 1 subtopics (all share one engine)
   const m2Part1 = new Set([
     "m2.matrices_intro",
     "m2.index_slice",
@@ -62,15 +56,10 @@ function normalizeTopicQuery(input: string | null | undefined): {
     return { requestedDbSlug: dbSlug, genKey: "matrices_part1" };
   }
 
-  // general fallback: suffix/legacy mapping
   const gk = genKeyFromAnySlug(dbSlug) ?? genKeyFromAnySlug(raw);
   return { requestedDbSlug: dbSlug, genKey: gk };
 }
 
-/**
- * Resolve a topic slug (TopicSlug) to the DB topic id.
- * PracticeQuestionInstance requires topicId.
- */
 async function resolveTopicIdOrThrow(topicSlug: string) {
   const canonical = topicSlug;
 
@@ -88,26 +77,52 @@ async function resolveTopicIdOrThrow(topicSlug: string) {
   return t.id;
 }
 
+// ✅ map Exercise.kind string -> Prisma PracticeKind
+function toPracticeKindOrThrow(kind: string): PracticeKind {
+  // These must exist in your Prisma enum PracticeKind.
+  // If you get the error again, add missing values to schema.prisma then migrate.
+  const k = kind as PracticeKind;
+
+  const allowed = new Set<PracticeKind>([
+    PracticeKind.numeric,
+    PracticeKind.single_choice,
+    PracticeKind.multi_choice,
+    PracticeKind.vector_drag_target,
+    PracticeKind.vector_drag_dot,
+    // ✅ your new kind
+    PracticeKind.matrix_input,
+  ]);
+
+  if (!allowed.has(k)) {
+    throw new Error(
+      `Unsupported kind "${kind}" for PracticeKind enum. Add it to schema.prisma if intended.`
+    );
+  }
+  return k;
+}
+
 async function createInstance(args: {
   sessionId: string | null;
   exercise: Exercise;
   expected: any;
-  topic: TopicSlug; // DB slug
+  topic: TopicSlug;
   difficulty: Difficulty;
 }) {
   const { sessionId, exercise, expected, topic, difficulty } = args;
 
   const difficultyValue = ((exercise as any).difficulty ?? difficulty) as Difficulty;
 
-  // exercise may override topic; treat it as slug too
   const rawTopicSlug = String((exercise as any).topic ?? topic);
   const dbTopicSlug = toDbTopicSlug(rawTopicSlug);
   const topicId = await resolveTopicIdOrThrow(dbTopicSlug);
 
+  const kindStr = String((exercise as any).kind ?? "");
+  const kindEnum = toPracticeKindOrThrow(kindStr);
+
   return prisma.practiceQuestionInstance.create({
     data: {
       sessionId,
-      kind: (exercise as any).kind,
+      kind: kindEnum,
       topicId,
       difficulty: difficultyValue,
       title: String((exercise as any).title ?? "Practice"),
@@ -127,6 +142,7 @@ function signKey(args: {
   sessionId: string | null;
   userId: string | null;
   guestId: string | null;
+  allowReveal: boolean;
 }) {
   const nowSec = Math.floor(Date.now() / 1000);
   return signPracticeKey({
@@ -134,16 +150,11 @@ function signKey(args: {
     sessionId: args.sessionId,
     userId: args.userId,
     guestId: args.guestId,
+    allowReveal: args.allowReveal, // ✅ NEW
     exp: nowSec + 60 * 60,
   });
 }
 
-/**
- * Strict session ownership:
- * - If the session has no owner -> error
- * - If session is user-owned -> actor.userId must match
- * - If session is guest-owned -> actor.guestId must match
- */
 function assertOwnsSessionOrThrow(args: {
   sessionUserId: string | null;
   sessionGuestId: string | null;
@@ -171,7 +182,6 @@ function assertOwnsSessionOrThrow(args: {
     return { ok: true as const };
   }
 
-  // guest-owned
   if (!actorGuestId || sessionGuestId !== actorGuestId) {
     return { ok: false as const, status: 403, body: { message: "Forbidden." } };
   }
@@ -179,7 +189,6 @@ function assertOwnsSessionOrThrow(args: {
 }
 
 export async function GET(req: Request) {
-  // ✅ actor + guest cookie must be available in BOTH session + stateless mode
   const actor0 = await getActor();
   const ensured = ensureGuestId(actor0);
   const actor = ensured.actor;
@@ -188,6 +197,9 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const sessionIdParam = searchParams.get("sessionId");
+
+    // ✅ allowReveal flag comes from URL
+    const allowRevealParam = searchParams.get("allowReveal") === "true";
 
     // ----------------------------
     // Session mode
@@ -220,11 +232,7 @@ export async function GET(req: Request) {
         return withGuestCookie({ message: "Session not found." }, 404, setGuestId);
       }
       if (session.status !== "active") {
-        return withGuestCookie(
-          { message: "Session is not active." },
-          400,
-          setGuestId
-        );
+        return withGuestCookie({ message: "Session is not active." }, 400, setGuestId);
       }
 
       const owns = assertOwnsSessionOrThrow({
@@ -255,15 +263,10 @@ export async function GET(req: Request) {
         }
 
         const a = session.assignment;
-        if (!a)
-          return withGuestCookie({ message: "Assignment not found." }, 404, setGuestId);
+        if (!a) return withGuestCookie({ message: "Assignment not found." }, 404, setGuestId);
 
         if (a.status !== "published") {
-          return withGuestCookie(
-            { message: "Assignment not available." },
-            400,
-            setGuestId
-          );
+          return withGuestCookie({ message: "Assignment not available." }, 400, setGuestId);
         }
         if (a.availableFrom && now < a.availableFrom) {
           return withGuestCookie({ message: "Not available yet." }, 400, setGuestId);
@@ -283,11 +286,9 @@ export async function GET(req: Request) {
 
         genTopic = allowedGen.length ? pick(allowedGen) : pick(GEN_TOPICS);
 
-        // store a *reasonable* slug (DB) for instance creation
-        topicSlug =
-          allowedSlugs.length
-            ? pick(allowedSlugs)
-            : toDbTopicSlug(String(genTopic));
+        topicSlug = allowedSlugs.length
+          ? pick(allowedSlugs)
+          : toDbTopicSlug(String(genTopic));
 
         difficulty = (a.difficulty as Difficulty) ?? pick(DIFFICULTIES);
       } else {
@@ -300,14 +301,10 @@ export async function GET(req: Request) {
         const { requestedDbSlug, genKey } = normalizeTopicQuery(rawTopic);
 
         genTopic =
-          requestedDbSlug === "all"
-            ? pick(GEN_TOPICS)
-            : genKey ?? pick(GEN_TOPICS);
+          requestedDbSlug === "all" ? pick(GEN_TOPICS) : genKey ?? pick(GEN_TOPICS);
 
         topicSlug =
-          requestedDbSlug === "all"
-            ? toDbTopicSlug(String(genTopic))
-            : requestedDbSlug;
+          requestedDbSlug === "all" ? toDbTopicSlug(String(genTopic)) : requestedDbSlug;
 
         difficulty =
           rawDifficulty === "easy" || rawDifficulty === "medium" || rawDifficulty === "hard"
@@ -318,11 +315,7 @@ export async function GET(req: Request) {
       const { exercise, expected } = await getExerciseWithExpected(genTopic, difficulty);
 
       if (!exercise || typeof (exercise as any).kind !== "string") {
-        return withGuestCookie(
-          { message: "Generator returned invalid exercise." },
-          500,
-          setGuestId
-        );
+        return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
       }
 
       const instance = await createInstance({
@@ -334,10 +327,7 @@ export async function GET(req: Request) {
       });
 
       prisma.practiceSession
-        .update({
-          where: { id: session.id },
-          data: { lastInstanceId: instance.id },
-        })
+        .update({ where: { id: session.id }, data: { lastInstanceId: instance.id } })
         .catch(() => {});
 
       const key = signKey({
@@ -345,6 +335,9 @@ export async function GET(req: Request) {
         sessionId: instance.sessionId ?? null,
         userId: actor.userId ?? null,
         guestId: actor.guestId ?? null,
+        // ✅ Only enable reveal if URL asked for it
+        // (assignment will still be blocked unless allowReveal=true was present)
+        allowReveal: allowRevealParam,
       });
 
       return withGuestCookie(
@@ -357,6 +350,7 @@ export async function GET(req: Request) {
             targetCount: session.targetCount,
             requestedTopic: topicSlug,
             generatorTopic: genTopic,
+            allowReveal: allowRevealParam,
           },
         },
         200,
@@ -386,11 +380,7 @@ export async function GET(req: Request) {
     const { exercise, expected } = await getExerciseWithExpected(genTopic, difficulty);
 
     if (!exercise || typeof (exercise as any).kind !== "string") {
-      return withGuestCookie(
-        { message: "Generator returned invalid exercise." },
-        500,
-        setGuestId
-      );
+      return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
     }
 
     const instance = await createInstance({
@@ -406,23 +396,21 @@ export async function GET(req: Request) {
       sessionId: null,
       userId: actor.userId ?? null,
       guestId: actor.guestId ?? null,
+      allowReveal: allowRevealParam,
     });
 
     return withGuestCookie(
       {
         exercise: exercise as Exercise,
         key,
-        meta: { requestedTopic: topicSlug, generatorTopic: genTopic },
+        meta: { requestedTopic: topicSlug, generatorTopic: genTopic, allowReveal: allowRevealParam },
       },
       200,
       setGuestId
     );
   } catch (err: any) {
     return withGuestCookie(
-      {
-        message: "Practice API failed",
-        explanation: err?.message ?? String(err),
-      },
+      { message: "Practice API failed", explanation: err?.message ?? String(err) },
       500,
       setGuestId
     );

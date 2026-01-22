@@ -10,11 +10,15 @@ import type { ReviewModule } from "@/lib/review/types";
 import { vectorsModule,  } from "@/lib/review/modules/vectors";
 import {vectorsPart2Module} from "@/lib/review/modules/vectorsPart2Module";
 import {matricesPart1Module} from "@/lib/review/modules/matricesPart1Module";
+import {matricesPart2Module} from "@/lib/review/modules/matricesPart2Module";
+
 // ✅ Register modules by id
 const MODULES: Record<string, ReviewModule> = {
   [vectorsModule.id]: vectorsModule,
   [vectorsPart2Module.id]: vectorsPart2Module,
   [matricesPart1Module.id]: matricesPart1Module,
+  [matricesPart2Module.id]: matricesPart2Module,
+
 };
 
 export default function ReviewModulePage() {

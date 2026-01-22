@@ -32,6 +32,7 @@ export type VectorPadState = {
 
 export type TopicOption = { id: TopicSlug | "all"; label: string };
 
+
 export const topicOptions = [
   { id: "all", label: "All topics" },
 
@@ -65,6 +66,16 @@ export const topicOptions = [
   { id: "m2.matrix_ops", label: "Matrix ops (add/mul/transpose)" },
   { id: "m2.matrix_inverse", label: "Identity / inverse" },
   { id: "m2.matrix_properties", label: "Matrix properties" },
+
+  // -------------------- ✅ Module 3 --------------------
+  { id: "m3.matrices_part2", label: "Matrices — Part 2 (mixed)" },
+
+  { id: "m3.norms", label: "Matrices: Norms (Frobenius, trace trick)" },
+  { id: "m3.colspace", label: "Matrices: Column space" },
+  { id: "m3.nullspace", label: "Matrices: Null space / nullity" },
+  { id: "m3.rank", label: "Matrices: Rank (and tolerance idea)" },
+  { id: "m3.det", label: "Matrices: Determinant" },
+  { id: "m3.charpoly", label: "Matrices: det(A−λI) / eigen intuition" },
 ] as const satisfies readonly TopicOption[];
 
 export const difficultyOptions: { id: Difficulty | "all"; label: string }[] = [
