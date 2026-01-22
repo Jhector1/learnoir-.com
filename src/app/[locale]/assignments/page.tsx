@@ -3,13 +3,22 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+// AFTER (accept both shapes to be safe)
+type AssignmentTopic =
+  | string
+  | { id?: string; slug: string; titleKey?: string };
+
 type Assignment = {
   id: string;
   slug: string;
   title: string;
   description: string | null;
   difficulty: "easy" | "medium" | "hard";
-  topics: string[];
+
+  // ✅ support both old + new API
+  topics: AssignmentTopic[];
+  topicSlugs?: string[];
+
   questionCount: number;
   availableFrom: string | null;
   dueAt: string | null;
@@ -20,6 +29,15 @@ type Assignment = {
   attemptsUsed?: number;
   attemptsRemaining?: number | null;
 };
+function topicSlug(t: AssignmentTopic): string {
+  return typeof t === "string" ? t : String(t.slug ?? "");
+}
+
+function topicLabel(t: AssignmentTopic): string {
+  // for now just show slug; if you want titleKey -> translation, I’ll show next
+  return typeof t === "string" ? t : String(t.slug ?? "");
+}
+
 
 const badge = (txt: string) =>
   "rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-extrabold text-white/70";
@@ -73,6 +91,7 @@ export default function AssignmentsPage() {
     let data: any = null;
     try {
       data = await r.json();
+      console.log("AssignmentsPage.start: response data:", data); // DEBUG
     } catch {
       // if something unexpected returns non-json
       alert("Unexpected response. Please try again.");
@@ -143,22 +162,42 @@ export default function AssignmentsPage() {
                       )}
                     </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {a.topics?.map((t) => (
-                        <span key={t} className={badge(t.toUpperCase())}>
-                          {t.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+  {(a.topics ?? []).map((t, i) => {
+    const slug = topicSlug(t) || `topic-${i}`;
+    return (
+      <span key={slug + "-" + i} className={badge(topicLabel(t).toUpperCase())}>
+        {topicLabel(t).toUpperCase()}
+      </span>
+    );
+  })}
+</div>
+
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => start(a.id, a.difficulty, a.topics?.[0] ?? "", a.questionCount ?? 10, a.allowReveal, a.showDebug)}
-                      className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15"
-                    >
-                      Start
-                    </button>
+                  <button
+  onClick={() => {
+    // ✅ prefer explicit topicSlugs from API if present
+    const first =
+      (a.topicSlugs?.[0] ??
+        topicSlug(a.topics?.[0] as any) ??
+        "all") || "all";
+
+    start(
+      a.id,
+      a.difficulty,
+      first,
+      a.questionCount ?? 10,
+      a.allowReveal,
+      a.showDebug
+    );
+  }}
+  className="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-xs font-extrabold hover:bg-emerald-300/15"
+>
+  Start
+</button>
+
                     <button
                       onClick={() => router.push(`/practice/history?assignment=${encodeURIComponent(a.id)}`)}
                       className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-extrabold text-white/70 hover:bg-white/10"

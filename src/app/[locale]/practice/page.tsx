@@ -681,6 +681,7 @@ export default function PracticePage() {
 
       if (sid) qs.set("sessionId", sid);
       else if (section) qs.set("section", section);
+if (allowReveal) qs.set("allowReveal", "true");
 
       const r = await fetch(`/api/practice?${qs.toString()}`, {
         cache: "no-store",

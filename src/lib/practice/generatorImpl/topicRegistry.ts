@@ -44,6 +44,7 @@ const MATRIX_PART2_VARIANTS = [
  "m3.rank",
  "m3.det",
   "m3.charpoly",
+  
 
 ] as const;
 

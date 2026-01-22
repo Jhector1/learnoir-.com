@@ -8,23 +8,25 @@ export const runtime = "nodejs";
 
 export async function POST(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> } // ✅ params is a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params; // ✅ unwrap it
+  const { id } = await params;
+
   const actor0 = await getActor();
   const ensured = ensureGuestId(actor0);
-  const actor = ensured.actor;
   const setGuestId = ensured.setGuestId ?? null;
+
   // ✅ hard-block if not subscribed
   const gate = await requireEntitledUser();
-   if (!gate.ok) {
-    // ✅ keep guest cookie behavior consistent
+  if (!gate.ok) {
+    // keep guest cookie behavior consistent
     return attachGuestCookie(gate.res, setGuestId);
   }
+
   const now = new Date();
 
   const assignment = await prisma.assignment.findUnique({
-    where: { id},
+    where: { id },
     select: {
       id: true,
       status: true,
@@ -54,11 +56,10 @@ export async function POST(
     const used = await prisma.practiceSession.count({
       where: {
         assignmentId: assignment.id,
-            userId: gate.userId, // ✅ count attempts per entitled user
-
-        // ...(actor.userId ? { userId: actor.userId } : { guestId: actor.guestId }),
+        userId: gate.userId, // ✅ count attempts per entitled user
       },
     });
+
     if (used >= assignment.maxAttempts) {
       const res = NextResponse.json({ message: "No attempts remaining." }, { status: 403 });
       return attachGuestCookie(res, setGuestId);
@@ -71,8 +72,9 @@ export async function POST(
       sectionId: assignment.sectionId,
       difficulty: assignment.difficulty,
       targetCount: assignment.questionCount,
-      userId: actor.userId ?? null,
-      guestId:  null,
+
+      userId: gate.userId, // ✅ ALWAYS entitled user
+      guestId: null,
     },
     select: { id: true },
   });
