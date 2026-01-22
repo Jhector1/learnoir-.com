@@ -7,10 +7,8 @@ import { prisma } from "@/lib/prisma";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
 
+  // Recommended for App Router unless you explicitly want DB sessions
   session: { strategy: "jwt" },
-
-  // ✅ IMPORTANT behind proxies (or set AUTH_TRUST_HOST=true)
-  trustHost: true,
 
   providers: [
     Keycloak({
@@ -19,37 +17,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.KEYCLOAK_CLIENT_SECRET!,
       authorization: {
         params: {
-          // forces Keycloak login screen instead of silent SSO
-          prompt: "login",
-          scope: "openid profile email",
+          scope: "openid profile email", // add offline_access if needed
         },
       },
     }),
   ],
 
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
+      // user exists on initial sign-in
       if (user?.id) token.uid = user.id;
-
-      // ✅ capture Keycloak tokens on initial sign-in
-      if (account?.provider === "keycloak") {
-        (token as any).idToken = account.id_token;
-        (token as any).accessToken = account.access_token;
-        (token as any).refreshToken = account.refresh_token;
-        (token as any).expiresAt = account.expires_at;
-      }
-
       return token;
     },
-
     async session({ session, token }) {
-      if (session.user && (token as any).uid) {
-        (session.user as any).id = (token as any).uid as string;
+      if (session.user && token.uid) {
+        // attach your internal DB user id
+        (session.user as any).id = token.uid as string;
       }
-
-      // ✅ expose idToken for logout
-      (session as any).idToken = (token as any).idToken ?? null;
-
       return session;
     },
   },
