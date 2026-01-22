@@ -1069,7 +1069,7 @@ if (
 
   // PRACTICE VIEW
   const bFixed = current?.dragB;
-const attempts = current.attempts ?? 0;
+const attempts = current?.attempts ?? 0;
 
   return (
     <div className="min-h-screen p-4 md:p-6 bg-[radial-gradient(1200px_700px_at_20%_0%,#151a2c_0%,#0b0d12_50%)] text-white/90">
