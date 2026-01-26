@@ -10,7 +10,7 @@ import { DIFFICULTIES, pick } from "@/lib/practice/catalog";
 import { genKeyFromAnySlug, toDbTopicSlug } from "@/lib/practice/topicSlugs";
 import { requireEntitledUser } from "@/lib/billing/requireEntitledUser";
 import { TOPIC_GENERATORS } from "@/lib/practice/generatorImpl/topicRegistry";
-import { PracticeKind } from "@prisma/client";
+import { PracticeKind, PracticeDifficulty as DbPracticeDifficulty } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,12 +55,8 @@ function normalizeTopicQuery(input: string | null | undefined): {
     "m3.matrices_part2",
   ]);
 
-  if (m2Part1.has(dbSlug)) {
-    return { requestedDbSlug: dbSlug, genKey: "matrices_part1" };
-  }
-  if (m3Part2.has(dbSlug)) {
-    return { requestedDbSlug: dbSlug, genKey: "matrices_part2" };
-  }
+  if (m2Part1.has(dbSlug)) return { requestedDbSlug: dbSlug, genKey: "matrices_part1" };
+  if (m3Part2.has(dbSlug)) return { requestedDbSlug: dbSlug, genKey: "matrices_part2" };
 
   const gk = genKeyFromAnySlug(dbSlug) ?? genKeyFromAnySlug(raw);
   return { requestedDbSlug: dbSlug, genKey: gk };
@@ -103,21 +99,31 @@ function toPracticeKindOrThrow(kind: string): PracticeKind {
   return k;
 }
 
+function toDbDifficultyOrThrow(d: unknown): DbPracticeDifficulty {
+  const s = String(d ?? "").trim();
+  if (s === "easy") return DbPracticeDifficulty.easy;
+  if (s === "medium") return DbPracticeDifficulty.medium;
+  if (s === "hard") return DbPracticeDifficulty.hard;
+  throw new Error(`Invalid difficulty "${s}" (expected easy|medium|hard).`);
+}
+
 async function createInstance(args: {
   sessionId: string | null;
   exercise: Exercise;
   expected: any;
-  topic: TopicSlug; // authoritative topic
+  topicSlug: TopicSlug; // authoritative topic slug
   difficulty: Difficulty;
+  topicIdHint?: string | null; // fast path when caller already knows topicId
 }) {
-  const { sessionId, exercise, expected, topic, difficulty } = args;
+  const { sessionId, exercise, expected, topicSlug, difficulty, topicIdHint } = args;
 
   const difficultyValue = ((exercise as any).difficulty ?? difficulty) as Difficulty;
+  const dbDifficulty = toDbDifficultyOrThrow(difficultyValue);
 
-  // prefer locked topic
-  const rawTopicSlug = String(topic ?? (exercise as any).topic ?? "");
+  const rawTopicSlug = String(topicSlug ?? (exercise as any).topic ?? "");
   const dbTopicSlug = toDbTopicSlug(rawTopicSlug);
-  const topicId = await resolveTopicIdOrThrow(dbTopicSlug);
+
+  const topicId = topicIdHint ?? (await resolveTopicIdOrThrow(dbTopicSlug));
 
   const kindStr = String((exercise as any).kind ?? "");
   const kindEnum = toPracticeKindOrThrow(kindStr);
@@ -127,7 +133,7 @@ async function createInstance(args: {
       sessionId,
       kind: kindEnum,
       topicId,
-      difficulty: difficultyValue,
+      difficulty: dbDifficulty,
       title: String((exercise as any).title ?? "Practice"),
       prompt: String((exercise as any).prompt ?? ""),
       publicPayload: { ...(exercise as any), topic: dbTopicSlug },
@@ -191,6 +197,10 @@ function lockExerciseTopic(exercise: Exercise, lockedTopic: TopicSlug): Exercise
   return { ...(exercise as any), topic: lockedTopic } as Exercise;
 }
 
+async function countInstances(sessionId: string) {
+  return prisma.practiceQuestionInstance.count({ where: { sessionId } });
+}
+
 // ---------------- FAIR assignment rotation helpers ----------------
 
 type TopicRow = {
@@ -210,15 +220,6 @@ function stableHash32(input: string) {
   return h >>> 0;
 }
 
-async function fetchTopicRowsBySlugs(slugs: TopicSlug[]): Promise<TopicRow[]> {
-  if (!slugs.length) return [];
-  const rows = await prisma.practiceTopic.findMany({
-    where: { slug: { in: slugs } },
-    select: { id: true, slug: true, genKey: true, meta: true },
-  });
-  return rows.map((r) => ({ ...r, slug: r.slug as TopicSlug }));
-}
-
 function buildQuotaMap(sessionId: string, slugs: TopicSlug[], totalQuestions: number) {
   const n = slugs.length;
   const m = new Map<TopicSlug, number>();
@@ -227,7 +228,6 @@ function buildQuotaMap(sessionId: string, slugs: TopicSlug[], totalQuestions: nu
   const base = Math.floor(totalQuestions / n);
   const rem = totalQuestions % n;
 
-  // deterministic remainder distribution (so not always "first topic")
   const order = [...slugs].sort(
     (a, b) => stableHash32(`${sessionId}|${a}`) - stableHash32(`${sessionId}|${b}`)
   );
@@ -254,19 +254,19 @@ async function pickNextAssignmentTopic(args: {
   const idToSlug = new Map<string, TopicSlug>();
   for (const t of allowedTopics) idToSlug.set(t.id, t.slug);
 
-  const instances = await prisma.practiceQuestionInstance.findMany({
+  const grouped = await prisma.practiceQuestionInstance.groupBy({
+    by: ["topicId"],
     where: { sessionId },
-    select: { topicId: true },
+    _count: { _all: true },
   });
 
   const countBySlug = new Map<TopicSlug, number>();
-  for (const it of instances) {
-    const slug = idToSlug.get(it.topicId);
+  for (const g of grouped) {
+    const slug = idToSlug.get(g.topicId);
     if (!slug) continue;
-    countBySlug.set(slug, (countBySlug.get(slug) ?? 0) + 1);
+    countBySlug.set(slug, g._count._all);
   }
 
-  // Prefer topics under quota, pick the one most behind
   let best: TopicRow | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
   let bestCount = Number.POSITIVE_INFINITY;
@@ -279,7 +279,7 @@ async function pickNextAssignmentTopic(args: {
     const count = countBySlug.get(t.slug) ?? 0;
     if (count >= target) continue;
 
-    const score = count / target; // smaller => more behind
+    const score = count / target;
     const tie = stableHash32(`${sessionId}|${t.slug}`);
 
     if (
@@ -296,7 +296,6 @@ async function pickNextAssignmentTopic(args: {
 
   if (best) return best;
 
-  // Fallback if quotas are met (extra practice) -> least used
   best = null;
   bestCount = Number.POSITIVE_INFINITY;
   bestTie = Number.POSITIVE_INFINITY;
@@ -320,8 +319,6 @@ async function pickNextAssignmentTopic(args: {
 
 // ---------------- topic-matching generator (non-assignment) ----------------
 
-// Retry until generator returns an exercise that matches desiredTopic (when it’s a subtopic),
-// passing opts.variant for m2/m3 so matrices engines actually generate the requested variant.
 async function getExerciseForTopic(args: {
   genTopic: GenKey;
   difficulty: Difficulty;
@@ -362,8 +359,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const sessionIdParam = searchParams.get("sessionId");
 
-    // define once for whole request
-    const allowReveal = searchParams.get("allowReveal") === "true";
+    const allowRevealRequested = searchParams.get("allowReveal") === "true";
 
     // ----------------------------
     // Session mode
@@ -382,11 +378,16 @@ export async function GET(req: Request) {
             select: {
               id: true,
               status: true,
-              topics: { select: { topic: { select: { slug: true } } } },
               difficulty: true,
               questionCount: true,
               availableFrom: true,
               dueAt: true,
+              allowReveal: true,
+              topics: {
+                select: {
+                  topic: { select: { id: true, slug: true, genKey: true, meta: true } },
+                },
+              },
             },
           },
         },
@@ -408,16 +409,18 @@ export async function GET(req: Request) {
       const now = new Date();
 
       let topicSlug: TopicSlug;
+      let topicIdHint: string | null = null;
       let genTopic: GenKey;
       let difficulty: Difficulty;
       let desiredTopic: TopicSlug | null = null;
 
-      // We’ll fill these with the actual exercise we’re going to return/create.
       let exercise: Exercise;
       let expected: any;
 
+      let allowRevealEffective = false;
+
       // ----------------------------
-      // Assignment session rules (FAIR multi-topic rotation)
+      // Assignment session rules
       // ----------------------------
       if (session.assignmentId) {
         const gate = await requireEntitledUser();
@@ -440,26 +443,43 @@ export async function GET(req: Request) {
           return withGuestCookie({ message: "Assignment is past due." }, 400, setGuestId);
         }
 
+        allowRevealEffective = Boolean(a.allowReveal) && allowRevealRequested;
+
         const totalQuestions = Number(a.questionCount ?? session.targetCount ?? 10);
 
-        // Optional: stop when complete
-        const already = await prisma.practiceQuestionInstance.count({
-          where: { sessionId: session.id },
-        });
+        // ✅ COMPLETE => return 200 JSON (NOT 400)
+        const already = await countInstances(session.id);
         if (already >= totalQuestions) {
-          return withGuestCookie({ message: "Assignment complete." }, 400, setGuestId);
+          return withGuestCookie(
+            {
+              complete: true,
+              message: "Assignment complete.",
+              sessionId: session.id,
+              meta: {
+                mode: "assignment",
+                targetCount: totalQuestions,
+                already,
+                allowReveal: allowRevealEffective,
+              },
+            },
+            200,
+            setGuestId
+          );
         }
 
-        const allowedSlugs = (a.topics ?? [])
-          .map((x) => x.topic?.slug)
+        const allowedTopicRows: TopicRow[] = (a.topics ?? [])
+          .map((x) => x.topic)
           .filter(Boolean)
-          .map((s) => toDbTopicSlug(String(s))) as TopicSlug[];
+          .map((t) => ({
+            id: t!.id,
+            slug: toDbTopicSlug(String(t!.slug)) as TopicSlug,
+            genKey: t!.genKey ?? null,
+            meta: t!.meta,
+          }));
 
-        if (!allowedSlugs.length) {
+        if (!allowedTopicRows.length) {
           return withGuestCookie({ message: "Assignment has no topics." }, 400, setGuestId);
         }
-
-        const allowedTopicRows = await fetchTopicRowsBySlugs(allowedSlugs);
 
         const chosen = await pickNextAssignmentTopic({
           sessionId: session.id,
@@ -467,18 +487,16 @@ export async function GET(req: Request) {
           totalQuestions,
         });
 
-        // Route generator based on DB (preferred), with fallback
+        topicSlug = chosen.slug;
+        topicIdHint = chosen.id;
+        desiredTopic = chosen.slug;
+
         const dbGenKey = (chosen.genKey ?? null) as GenKey | null;
         const fallback = normalizeTopicQuery(chosen.slug).genKey ?? pick(GEN_TOPICS);
         genTopic = (dbGenKey ?? fallback) as GenKey;
 
         difficulty = (a.difficulty as Difficulty) ?? pick(DIFFICULTIES);
 
-        // Lock to the chosen topic slug
-        topicSlug = chosen.slug;
-        desiredTopic = chosen.slug;
-
-        // Variant for matrices engines (or any future engine that respects opts.variant)
         const variant =
           (chosen.meta as any)?.variant && typeof (chosen.meta as any)?.variant === "string"
             ? String((chosen.meta as any).variant)
@@ -486,26 +504,42 @@ export async function GET(req: Request) {
             ? String(chosen.slug)
             : null;
 
-        const out = await getExerciseWithExpected(
-          genTopic,
-          difficulty,
-          variant ? { variant } : undefined
-        );
-
+        const out = await getExerciseWithExpected(genTopic, difficulty, variant ? { variant } : undefined);
         expected = out.expected;
         exercise = lockExerciseTopic(out.exercise as Exercise, chosen.slug);
-
-        // ----------------------------
-        // Normal session rules (single requested topic or mix)
-        // ----------------------------
       } else {
+        // ----------------------------
+        // Normal session rules
+        // ----------------------------
         const rawTopic = searchParams.get("topic");
         const rawDifficulty = searchParams.get("difficulty");
 
+        allowRevealEffective = allowRevealRequested;
+
+        // ✅ COMPLETE => return 200 JSON (NOT error)
+        const totalQuestions = Number(session.targetCount ?? 10);
+        const already = await countInstances(session.id);
+        if (already >= totalQuestions) {
+          return withGuestCookie(
+            {
+              complete: true,
+              message: "Session complete.",
+              sessionId: session.id,
+              meta: {
+                mode: "session",
+                targetCount: totalQuestions,
+                already,
+                allowReveal: allowRevealEffective,
+              },
+            },
+            200,
+            setGuestId
+          );
+        }
+
         const { requestedDbSlug, genKey } = normalizeTopicQuery(rawTopic);
 
-        genTopic =
-          requestedDbSlug === "all" ? pick(GEN_TOPICS) : (genKey ?? pick(GEN_TOPICS));
+        genTopic = requestedDbSlug === "all" ? pick(GEN_TOPICS) : (genKey ?? pick(GEN_TOPICS));
 
         topicSlug =
           requestedDbSlug === "all"
@@ -525,18 +559,17 @@ export async function GET(req: Request) {
       }
 
       if (!exercise || typeof (exercise as any).kind !== "string") {
-        return withGuestCookie(
-          { message: "Generator returned invalid exercise." },
-          500,
-          setGuestId
-        );
+        return withGuestCookie({ message: "Generator returned invalid exercise." }, 500, setGuestId);
       }
+
+      const lockedTopic = (desiredTopic ?? topicSlug) as TopicSlug;
 
       const instance = await createInstance({
         sessionId: session.id,
         exercise: exercise as Exercise,
         expected,
-        topic: (desiredTopic ?? topicSlug) as TopicSlug,
+        topicSlug: lockedTopic,
+        topicIdHint,
         difficulty,
       });
 
@@ -549,8 +582,14 @@ export async function GET(req: Request) {
         sessionId: instance.sessionId ?? null,
         userId: actor.userId ?? null,
         guestId: actor.guestId ?? null,
-        allowReveal,
+        allowReveal: allowRevealEffective,
       });
+
+      // ✅ include authoritative targetCount so client can display correct 4/4 etc.
+      const targetCount =
+        session.assignmentId
+          ? Number(session.assignment?.questionCount ?? session.targetCount ?? 10)
+          : Number(session.targetCount ?? 10);
 
       return withGuestCookie(
         {
@@ -559,10 +598,10 @@ export async function GET(req: Request) {
           sessionId: session.id,
           meta: {
             mode: session.assignmentId ? "assignment" : "session",
-            targetCount: session.targetCount,
-            requestedTopic: desiredTopic ?? topicSlug,
+            targetCount,
+            requestedTopic: lockedTopic,
             generatorTopic: genTopic,
-            allowReveal,
+            allowReveal: allowRevealEffective,
           },
         },
         200,
@@ -591,6 +630,8 @@ export async function GET(req: Request) {
         ? (rawDifficulty as Difficulty)
         : pick(DIFFICULTIES);
 
+    const allowRevealEffective = allowRevealRequested;
+
     const out = await getExerciseForTopic({ genTopic, difficulty, desiredTopic });
 
     if (!out.exercise || typeof (out.exercise as any).kind !== "string") {
@@ -604,7 +645,7 @@ export async function GET(req: Request) {
       sessionId: null,
       exercise,
       expected: out.expected,
-      topic: lockedTopic,
+      topicSlug: lockedTopic,
       difficulty,
     });
 
@@ -613,7 +654,7 @@ export async function GET(req: Request) {
       sessionId: null,
       userId: actor.userId ?? null,
       guestId: actor.guestId ?? null,
-      allowReveal,
+      allowReveal: allowRevealEffective,
     });
 
     return withGuestCookie(
@@ -621,9 +662,11 @@ export async function GET(req: Request) {
         exercise,
         key,
         meta: {
+          mode: "stateless",
+          targetCount: null,
           requestedTopic: lockedTopic,
           generatorTopic: genTopic,
-          allowReveal,
+          allowReveal: allowRevealEffective,
         },
       },
       200,

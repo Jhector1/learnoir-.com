@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import PrettyValue from "./PrettyValue";
+import MathMarkdown from "../math/MathMarkdown";
 
 export type MissedItem = {
   title?: string;
@@ -30,6 +31,16 @@ export default function SectionSummaryModal({
   total: number;
   missed: MissedItem[];
 }) {
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
@@ -44,29 +55,33 @@ export default function SectionSummaryModal({
       />
 
       {/* modal */}
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
-        <div className="border-b border-white/10 bg-white/[0.04] p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-black tracking-tight">
-                {title ?? "Section Complete"}
+      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d12] shadow-[0_30px_120px_rgba(0,0,0,0.65)]">
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0d12]/95 backdrop-blur">
+          <div className="bg-white/[0.04] p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-black tracking-tight">
+                  {title ?? "Section Complete"}
+                </div>
+                <div className="mt-1 text-xs text-white/65">
+                  {subtitle ?? "Here’s your score and what to review."}
+                </div>
               </div>
-              <div className="mt-1 text-xs text-white/65">
-                {subtitle ?? "Here’s your score and what to review."}
-              </div>
-            </div>
 
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold text-white/80 hover:bg-white/15"
-            >
-              Close
-            </button>
+              <button
+                onClick={onClose}
+                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-extrabold text-white/80 hover:bg-white/15"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Congrats */}
-        <div className="p-4">
+        {/* Scrollable content */}
+        <div className="overflow-y-auto max-h-[calc(90vh-112px)] p-4">
+          {/* Congrats */}
           <div
             className={[
               "rounded-2xl border p-4",
@@ -127,26 +142,32 @@ export default function SectionSummaryModal({
                     <div className="text-sm font-black text-white/90">
                       {m.title ?? `Question ${idx + 1}`}
                     </div>
+
                     {m.prompt ? (
-                      <div className="mt-1 text-sm text-white/80">{m.prompt}</div>
+                      <div className="mt-1">
+                        <MathMarkdown content={m.prompt} />
+                      </div>
                     ) : null}
 
-                  {/* // inside missed.map... */}
-<div className="mt-3 grid gap-2 md:grid-cols-2">
-  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-    <div className="text-xs font-extrabold text-white/60">Your answer</div>
-    <div className="mt-1 text-xs text-white/85">
-      <PrettyValue value={m.yourAnswer} />
-    </div>
-  </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-xs font-extrabold text-white/60">
+                          Your answer
+                        </div>
+                        <div className="mt-1 text-xs text-white/85">
+                          <PrettyValue value={m.yourAnswer} />
+                        </div>
+                      </div>
 
-  <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-    <div className="text-xs font-extrabold text-white/60">Correct answer</div>
-    <div className="mt-1 text-xs text-white/85">
-      <PrettyValue value={m.expected} />
-    </div>
-  </div>
-</div>
+                      <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className="text-xs font-extrabold text-white/60">
+                          Correct answer
+                        </div>
+                        <div className="mt-1 text-xs text-white/85">
+                          <PrettyValue value={m.expected} />
+                        </div>
+                      </div>
+                    </div>
 
                     {m.explanation ? (
                       <div className="mt-3 text-xs text-white/70">
@@ -163,7 +184,8 @@ export default function SectionSummaryModal({
           </div>
         </div>
 
-        <div className="border-t border-white/10 bg-white/[0.02] p-3 text-xs text-white/55">
+        {/* Sticky footer */}
+        <div className="sticky bottom-0 z-10 border-t border-white/10 bg-[#0b0d12]/95 backdrop-blur p-3 text-xs text-white/55">
           Saved score + missed questions can be persisted server-side per session.
         </div>
       </div>

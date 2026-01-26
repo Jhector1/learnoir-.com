@@ -344,7 +344,7 @@ export async function POST(req: Request) {
       debug: { reveal: isReveal, chosen, matches: chosen === correct },
     };
 
-    explanation = ok ? "Correct choice." : "Not quite — review the concept.";
+explanation = isReveal ? "Solution shown." : ok ? "Correct choice." : "Not quite — review the concept.";
   }
 
   // ----------------------------
@@ -546,7 +546,10 @@ export async function POST(req: Request) {
 
   // ✅ finalized rule for BOTH practice + assignment:
   // finalize when correct OR attempts exhausted (reveal never finalizes)
-  const finalized = !isReveal && (ok || nextNonRevealAttempts >= maxAttempts);
+const revealFinalizes = !isAssignment; // practice sessions only
+const finalized = isReveal
+  ? revealFinalizes
+  : (ok || nextNonRevealAttempts >= maxAttempts);
 
   // Save attempt
   await prisma.practiceAttempt.create({

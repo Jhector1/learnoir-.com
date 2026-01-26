@@ -10,7 +10,7 @@ type Props = {
   value: string[][];
   onChange: (next: string[][]) => void;
   cellWidthClass?: string; // "w-14" | "w-16" etc
-    readOnly?: boolean;
+  readOnly?: boolean;
 };
 
 function normalizeGrid(value: string[][], rows: number, cols: number) {
@@ -35,23 +35,21 @@ export default function MatrixEntryInput({
   value,
   onChange,
   cellWidthClass = "w-16",
+  readOnly = false,
 }: Props) {
   const grid = useMemo(() => normalizeGrid(value, rows, cols), [value, rows, cols]);
 
   return (
     <div className="flex items-start gap-3">
-      {/* label */}
       <MathMarkdown className="text-white/90" content={`$${labelLatex}$`} />
 
       <div className="max-w-full overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-3">
         <div className="flex items-center">
-          {/* Left bracket */}
           <MathMarkdown
             className="text-white/90"
             content={String.raw`$\left[${phantomForRows(rows)}\right.$`}
           />
 
-          {/* Cells */}
           <div
             className="mx-2 grid gap-x-3 gap-y-2"
             style={{ gridTemplateColumns: `repeat(${Math.max(1, cols)}, minmax(0, 1fr))` }}
@@ -63,7 +61,10 @@ export default function MatrixEntryInput({
                   type="text"
                   inputMode="decimal"
                   value={cell}
+                  readOnly={readOnly}
+                  disabled={readOnly}
                   onChange={(e) => {
+                    if (readOnly) return;
                     const next = grid.map((rr) => rr.slice());
                     next[r][c] = e.target.value;
                     onChange(next);
@@ -72,7 +73,7 @@ export default function MatrixEntryInput({
                     cellWidthClass,
                     "rounded-md border border-white/10 bg-black/30",
                     "px-2 py-1 text-center text-xs font-mono font-extrabold text-white/90",
-                    "outline-none focus:border-emerald-400/60",
+                    "outline-none focus:border-emerald-400/60 disabled:opacity-60",
                   ].join(" ")}
                   placeholder="0"
                 />
@@ -80,7 +81,6 @@ export default function MatrixEntryInput({
             )}
           </div>
 
-          {/* Right bracket */}
           <MathMarkdown
             className="text-white/90"
             content={String.raw`$\left.${phantomForRows(rows)}\right]$`}
